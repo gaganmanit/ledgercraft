@@ -1,6 +1,6 @@
 # Ledgercraft for Mac
 
-The native app wraps the local accounting server in AppKit and WebKit. It bundles Node, fonts and the book interface, with native printing, file selection, save dialogs and Mac editing shortcuts. Build on macOS 13 or later with Xcode Command Line Tools, Node.js 24 or later, and Python 3 on your PATH.
+The native app wraps the local accounting server in AppKit and WebKit. It bundles Node, fonts and the book interface, with native printing, file selection, save dialogs and Mac editing shortcuts. Build with Xcode Command Line Tools, Node.js 24 or later, and Python 3 on your PATH. The app's minimum macOS version is the higher of the launcher's declared minimum and the selected Node binary's minimum; the Node 24.15 runtime used for this release requires macOS 13.5.
 
 ## Build a candidate
 
@@ -34,6 +34,20 @@ python3 mac/install.py "$PWD/dist/Ledgercraft.app" "$HOME/Applications/Ledgercra
 ```
 
 The installer moves the candidate to the target. Updates use a same-volume atomic exchange and preserve the assets used by an open session. The preceding build stays under `~/Library/Application Support/Ledgercraft/Previous Release`. Quit and reopen to use the updated build. Building a distributable signed and notarized release is a separate release step.
+
+## Build a release disk image
+
+With the required public resources prepared, build from a committed source revision:
+
+```sh
+bash tools/create-mac-dmg.sh --source-ref HEAD
+```
+
+The command builds its own public app from a clean Git archive, includes only the verified runtime resources and synthetic starter book, and creates `dist/Ledgercraft-1.4.0-macOS-arm64.dmg` on an Apple Silicon machine. It does not package an installed app. File dates are normalized to 01-01-2001, transferable extended attributes are cleared, and the final image is checked for local owner information. A fixed empty system provenance marker may remain on platforms that regenerate it. The official Node runtime and required third-party notices are retained intact. The output has a local ad hoc signature, without Apple notarization.
+
+The disk image contains `Ledgercraft.app` and an Applications shortcut. The packaging check mounts it read-only without opening Finder, verifies the bundle signature and source contents, runs an isolated native launch using the bundled runtime, checks the disk image and records its SHA-256. Local proof files and release notes are written beside the image under `dist/DMG-proof/`. Existing output files are left untouched.
+
+When copying from the image, check any existing `Ledgercraft.app` before replacing it. This public app's bundle identifier is `org.ledgercraft.desktop`. If an existing app has another identifier, keep it and copy this app under another name, such as `Ledgercraft Public.app`; the app's bundle name can differ from its filename. The public installer rejects a different bundle identifier instead of migrating it. Public books use `~/Library/Application Support/Ledgercraft` and are not taken from another app's data folder.
 
 ## Optional interface checks
 

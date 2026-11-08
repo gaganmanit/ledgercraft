@@ -2,6 +2,10 @@
 
 Ledgercraft is a local accounting app for company books, Indian GST billing and Tally data migration. It keeps ledgers, double-entry vouchers, stock movements and supporting source files together. A browser interface and a native macOS wrapper use the same accounting engine.
 
+## Download for Mac
+
+[Download Ledgercraft 1.4.0 for Apple Silicon](https://github.com/gaganmanit/ledgercraft/releases/download/v1.4.0/Ledgercraft-1.4.0-macOS-arm64.dmg). The image includes the app and an Applications shortcut. It runs on macOS 13.5 or later. The app is ad hoc signed and has no Apple notarization.
+
 ## Get started
 
 Use Node.js 24 or later and Python 3. From the repository root:
