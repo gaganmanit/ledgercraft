@@ -4,7 +4,7 @@ Ledgercraft is a local accounting app for company books, Indian GST billing and 
 
 ## Download for Mac
 
-[Download Ledgercraft 1.4.0 for Apple Silicon](https://github.com/gaganmanit/ledgercraft/releases/download/v1.4.0/Ledgercraft-1.4.0-macOS-arm64.dmg). The image includes the app and an Applications shortcut. It runs on macOS 13.5 or later. The app is ad hoc signed and has no Apple notarization.
+[Download Ledgercraft 1.4.0 for Apple Silicon](https://github.com/gaganmanit/ledgercraft/releases/download/v1.4.0/Ledgercraft-1.4.0-macOS-arm64.dmg). Open the image and drag Ledgercraft.app into your Applications folder. It runs on macOS 13.5 or later. The app is ad hoc signed and has no Apple notarization.
 
 ## Get started
 

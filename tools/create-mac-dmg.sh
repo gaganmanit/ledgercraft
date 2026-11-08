@@ -176,12 +176,11 @@ try:
         stage = work / "image-root"
         stage.mkdir()
         shutil.move(candidate, stage / "Ledgercraft.app")
-        (stage / "Applications").symlink_to("/Applications")
         normalize_dates(stage)
         writable = work / "release-master.iso"
         print("Creating release disk image", flush=True)
-        # UDF preserves executable modes and the Applications symlink without
-        # synthesizing FinderInfo attributes that invalidate signed resources.
+        # UDF preserves executable modes without synthesizing FinderInfo
+        # attributes that invalidate signed resources. Avoid UDF symlink issues.
         run(["/usr/bin/hdiutil", "makehybrid", "-udf", "-udf-volume-name", "Ledgercraft " + version, "-o", writable, stage])
         mount = work / "image-mount"
         mount.mkdir()
@@ -199,7 +198,7 @@ try:
         print("Verifying read-only image and isolated native launch", flush=True)
         run(["/usr/bin/hdiutil", "attach", "-readonly", "-nobrowse", "-noautoopen", "-owners", "off", "-mountpoint", mount, partial], capture_output=True)
         mounted = mount
-        if {file.name for file in mount.iterdir()} != {"Ledgercraft.app", "Applications"} or os.readlink(mount / "Applications") != "/Applications":
+        if {file.name for file in mount.iterdir()} != {"Ledgercraft.app"}:
             raise ValueError("Unexpected disk-image root contents")
         packaged = mount / "Ledgercraft.app"
         signature = run(["/usr/bin/codesign", "--verify", "--deep", "--strict", "--verbose=2", packaged], capture_output=True, text=True)
@@ -224,7 +223,7 @@ try:
                    "diskImageVerification": True, "readOnlyMountVerified": True, "isolatedNativeLaunch": True,
                    "packagedFiles": len(after), "fileMetadataEpoch": "2001-01-01T00:00:00Z", "privacyHardBlockers": []}
         save(proof / "release.json", receipt)
-        (proof / "release-notes.md").write_text(f"# Ledgercraft {version} for Mac\n\nStandalone {runtime_arch} application for macOS {app_info['LSMinimumSystemVersion']} or later, with Node {runtime_version} bundled.\n\nBuilt from public source revision `{commit}`. The image contains Ledgercraft.app and an Applications shortcut.\n\nThe application is locally ad hoc signed and is not Apple-notarized.\n\nIf Ledgercraft.app already exists with a different bundle identifier, keep it and copy this public app under another filename, such as Ledgercraft Public.app. The public bundle identifier is `org.ledgercraft.desktop`; its books use Application Support/Ledgercraft.\n\nSHA-256: `{checksum}`\n")
+        (proof / "release-notes.md").write_text(f"# Ledgercraft {version} for Mac\n\nStandalone {runtime_arch} application for macOS {app_info['LSMinimumSystemVersion']} or later, with Node {runtime_version} bundled.\n\nBuilt from public source revision `{commit}`. Open the disk image and copy Ledgercraft.app to Applications.\n\nThe application is locally ad hoc signed and is not Apple-notarized.\n\nIf Ledgercraft.app already exists with a different bundle identifier, keep it and copy this public app under another filename, such as Ledgercraft Public.app. The public bundle identifier is `org.ledgercraft.desktop`; its books use Application Support/Ledgercraft.\n\nSHA-256: `{checksum}`\n")
         success = True
         print(json.dumps(receipt, indent=2), flush=True)
 finally:
