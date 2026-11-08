@@ -143,11 +143,41 @@ export async function viewBookTool(route, token, ui) {
     debtors: `No customer has a balance on ${esc(dateLabel(range.to))}. Pass a <a href="#/c/${esc(id)}/v/Sales">sales voucher</a> to a customer ledger, or move the period end in the top bar.`,
     creditors: `No supplier has a balance on ${esc(dateLabel(range.to))}. Pass a <a href="#/c/${esc(id)}/v/Purchase">purchase voucher</a> to a supplier ledger, or move the period end in the top bar.`,
   };
-  const partyRows = (key) => report[key].map((row) => `<tr><th scope="row">${ledgerLink(row)}</th><td class="figure">${closing(row)}</td></tr>`).join("") || emptyRow(2, partyEmpty[key]);
+  /* Ageing buckets arrive in a fixed order (current, 1-30, 31-60, 61-90, 91-180, over180); the
+     column headings follow the labels the report sends so custom limits still read correctly. */
+  const ageing = report.ageing || {};
+  const bucketTemplate = ageing.receivable?.buckets || ageing.payable?.buckets || [];
+  const bucketHeading = (label) => label === "current" ? "Current" : /^over\d+$/.test(label) ? `Over ${label.slice(4)}` : label;
+  const bucketCells = (buckets) => bucketTemplate.map((_, index) => amountCell(buckets?.[index]?.paise || 0)).join("");
+  const columns = 4 + bucketTemplate.length;
+  const partyRow = (row) => {
+    const notes = [
+      row.msme && row.msmeOverduePaise ? `<div class="quiet">₹${money(row.msmeOverduePaise)} beyond 45 days</div>` : "",
+      row.advancePaise ? `<div class="quiet">₹${money(row.advancePaise)} paid in advance</div>` : "",
+    ].join("");
+    return `<tr><th scope="row"><a href="#/c/${esc(id)}/parties/${esc(row.ledgerId)}">${esc(row.name)}</a>${row.msme ? ` <span class="pill warn">MSME</span>` : ""}${notes}</th><td class="figure">${closing(row)}</td>${bucketCells(row.ageing)}${amountCell(row.overduePaise || 0)}<td><a class="button ghost" href="#/c/${esc(id)}/ledger/${esc(row.ledgerId)}" aria-label="Ledger report for ${esc(row.name)}">Ledger</a></td></tr>`;
+  };
+  const partyRows = (key) => report[key].map(partyRow).join("") || emptyRow(columns, partyEmpty[key]);
   const total = (amount, normal) => `${money(Math.abs(amount))}${amount < 0 ? ` <span class="dc">${normal === "Dr" ? "Cr" : "Dr"}</span>` : ""}`;
-  const sections = [["debtors", "Sundry debtors", "Net receivable", report.receivable, "Dr"], ["creditors", "Sundry creditors", "Net payable", report.payable, "Cr"]];
+  const sections = [
+    ["debtors", "Sundry debtors", "Net receivable", report.receivable, "Dr", ageing.receivable],
+    ["creditors", "Sundry creditors", "Net payable", report.payable, "Cr", ageing.payable],
+  ];
   const visible = sections.filter(([key]) => !route.detail || route.detail === key);
-  const body = visible.map(([key, title, label, amount, normal]) => `<section><h2>${title}</h2>${scroll(`<table><thead><tr><th>Party</th><th class="figure">Closing (₹)</th></tr></thead><tbody>${partyRows(key)}</tbody><tfoot><tr class="total"><th scope="row">${label}</th><td class="figure">${total(amount, normal)}</td></tr></tfoot></table>`)}</section>`).join("");
-  render(route.detail === "debtors" ? "Receivables" : route.detail === "creditors" ? "Payables" : "Outstanding balances", `${toolbar}<div class="${visible.length === 2 ? "two" : ""}">${body}</div>`);
+  const head = `<thead><tr><th>Party</th><th class="figure">Closing (₹)</th>${bucketTemplate.map((bucket) => `<th class="figure">${esc(bucketHeading(bucket.label))}</th>`).join("")}<th class="figure">Overdue (₹)</th><th><span class="sr">Ledger report</span></th></tr></thead>`;
+  const body = visible.map(([key, title, label, amount, normal, side]) => `<section class="subsection"><h2>${title}</h2>${scroll(`<table>${head}<tbody>${partyRows(key)}</tbody><tfoot><tr class="total"><th scope="row">${label}</th><td class="figure">${total(amount, normal)}</td>${bucketCells(side?.buckets)}${amountCell(side?.overduePaise || 0)}<td></td></tr></tfoot></table>`)}</section>`).join("");
+  const tile = (label, amount, suffix = "") => `<div><span>${esc(label)}</span><strong>₹${money(Math.abs(amount))}${suffix ? ` <small>${esc(suffix)}</small>` : ""}</strong></div>`;
+  const tiles = [];
+  if (visible.some(([key]) => key === "debtors")) {
+    tiles.push(tile(report.receivable < 0 ? "Customer advances" : "Net receivable", report.receivable));
+    tiles.push(tile("Receivable overdue", ageing.receivable?.overduePaise || 0));
+  }
+  if (visible.some(([key]) => key === "creditors")) {
+    tiles.push(tile(report.payable < 0 ? "Supplier advances" : "Net payable", report.payable));
+    tiles.push(tile("Payable overdue", ageing.payable?.overduePaise || 0));
+    if (report.msmeOverduePaise) tiles.push(tile("MSME beyond 45 days", report.msmeOverduePaise));
+  }
+  const explain = `<p class="subsection-intro">Balances on ${esc(dateLabel(report.asOf || range.to))}. Ageing columns count days past each bill's due date: the due date saved on the bill, otherwise the bill date plus the party's credit days. Overdue is the part more than 30 days past due.${report.msmeOverduePaise ? " MSME amounts are unpaid more than 45 days after the bill date." : ""}</p>`;
+  render(route.detail === "debtors" ? "Receivables" : route.detail === "creditors" ? "Payables" : "Outstanding balances", `${toolbar}<div class="summary-strip">${tiles.join("")}</div>${explain}${body}`);
   return true;
 }

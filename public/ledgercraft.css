@@ -690,3 +690,38 @@ a[aria-disabled="true"] { opacity: .45; cursor: not-allowed; pointer-events: non
 @media print {
   .table-more, .ledger-popup, .ledger-create, .shortcuts, .cover-buttons, .review-attention [aria-busy] { display: none !important; }
 }
+
+/* ---------- Pass 4: books settings, edit log and party statements ---------- */
+
+/* Numbering series: one row of controls per voucher type. */
+.numbering-table td { vertical-align: middle; }
+.numbering-table input.code { min-width: 7.5rem; font-size: 14px; }
+.numbering-table select { min-width: 9rem; }
+.numbering-table input[type="number"] { min-width: 7.5rem; font-variant-numeric: tabular-nums; }
+.numbering-table .check { justify-content: center; }
+.numbering-table [data-preview] { white-space: nowrap; }
+
+/* Period locks: books and GST side by side, each its own form. */
+.lock-forms { align-items: start; margin-top: 8px; }
+.lock-form { display: grid; gap: 12px; align-content: start; }
+.lock-form h3 { margin: 0; font-size: 15px; }
+.lock-form .kv { margin-top: 0; }
+.lock-form .actions { margin-top: 2px; }
+
+/* Edit log. */
+.audit-chain > p { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin: 4px 0 8px; font-size: 14px; }
+.audit-chain .attention-rule { list-style: none; margin: 8px 0 12px; }
+.audit-table td:nth-child(4) { min-width: 22rem; }
+.audit-table td:nth-child(5) { min-width: 12rem; }
+
+/* Party statements. */
+.party-table th[scope="row"] { min-width: 14rem; }
+.party-block { margin: 0 0 4px; }
+tr.party-period-total th, tr.party-period-total td { border-top: 1px solid var(--rule-2); font-weight: 500; color: var(--ink); }
+.party-open-items { margin-top: 24px; }
+
+@media print {
+  .audit-table .pill.info { display: inline-flex !important; }
+  .party-summary, .party-open-items { display: none !important; }
+  .party-letterhead p { margin: 0 0 2pt; }
+}

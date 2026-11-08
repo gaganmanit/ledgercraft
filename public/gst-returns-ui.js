@@ -2,6 +2,8 @@ import { bindCreditReview, creditReviewMarkup } from "./gst-credit-review-ui.js"
 import { showMatches } from "./gst-2b-ui.js";
 
 const labels = {"b2b,sez,de":"Registered customers and SEZ","b2cl":"Large interstate consumer invoices","b2cs":"Other consumer supplies","cdnr":"Registered credit and debit notes","cdnur":"Unregistered credit and debit notes","exp":"Exports","b2ba":"Amended registered invoices (B2BA)","b2cla":"Amended large consumer invoices (B2CLA)","expa":"Amended exports (EXPA)","cdnra":"Amended registered notes (CDNRA)","cdnura":"Amended unregistered notes (CDNURA)","exemp":"Nil-rated, exempt and non-GST","hsn(b2b)":"HSN summary for B2B supplies","hsn(b2c)":"HSN summary for B2C supplies","docs":"Documents issued"};
+/* Sections of the GSTR-1 upload file, in the order the summary reports them. */
+const JSON_SECTIONS = [["b2b","Registered customers and SEZ"],["b2ba","Amended registered invoices"],["b2cl","Large interstate consumer invoices"],["b2cla","Amended large consumer invoices"],["b2cs","Other consumer supplies, one row per rate and state"],["cdnr","Registered credit and debit notes"],["cdnra","Amended registered notes"],["cdnur","Unregistered credit and debit notes"],["cdnura","Amended unregistered notes"],["exp","Exports"],["expa","Amended exports"]];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const FY_MONTHS = [4,5,6,7,8,9,10,11,12,1,2,3];
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -70,7 +72,8 @@ export async function viewReturns(route, token, ui, selectedCreditId) {
   const reconciliation=report.hsnCheck.reconciliation;
   const outward=Object.keys(sheets).filter(n=>sheets[n].length);
   root.innerHTML=page({company,title:"GST returns",body:`${form}<p class="actions"><a class="button" data-return-corrections href="${href}/gst-amendments?${esc(query.toString())}">Review outward return corrections</a></p>${creditReviewMarkup(report.creditReviews || [],esc)}${exceptional}${hsnReview}${reportedComparators}${amendmentRows}
-    <div class="subsection"><h2>GSTR-1 worksheets</h2><p>Outward documents recorded for <span class="code">${esc(report.registration.gstin)}</span> in ${esc(monthLabel(month))}.</p><p class="actions"><a class="button" download href="${base}/gst-returns/workbook?${esc(query.toString())}">Download GSTR-1 workbook</a></p>
+    <div class="subsection"><h2>GSTR-1 worksheets</h2><p>Outward documents recorded for <span class="code">${esc(report.registration.gstin)}</span> in ${esc(monthLabel(month))}.</p><p class="actions"><a class="button" download href="${base}/gst-returns/workbook?${esc(query.toString())}">Download GSTR-1 workbook</a><a class="button" download href="${base}/gst-returns/json?${esc(query.toString())}">Download GSTR-1 JSON</a></p>
+    <section aria-labelledby="upload-check-title"><h3 id="upload-check-title">Upload file check</h3><p class="subsection-intro">The JSON file is for the GST portal’s offline tool or the upload on the Returns dashboard. Have a CA check it against one real period before you rely on it.</p><div data-upload-check aria-live="polite" aria-busy="true"><p class="quiet">Checking the upload file for ${esc(monthLabel(month))}.</p></div></section>
     <div class="details-list">${reconciliation.some(x=>x.supplyPaise || x.hsnPaise) ? `<details${reconciliation.some(x=>x.differencePaise)?" open":""}><summary>Table 12 reconciliation${reconciliation.some(x=>x.differencePaise)?' <span class="pill warn">Difference</span>':""}</summary>${grid(["Supply type","Supply tables ₹","HSN summary ₹","Difference ₹"],reconciliation.map(r=>[r.type.toUpperCase(),formatINR(r.supplyPaise),formatINR(r.hsnPaise),formatINR(r.differencePaise)]))}</details>` : ""}
     ${outward.map(worksheet).join("")}</div>${outward.length?"":`<p class="empty">No outward documents are recorded for this month. <a href="${href}/gst-invoice">Post a sales invoice</a> dated in this month to start the worksheets.</p>`}</div>
     <div class="subsection"><h2>GSTR-3B working figures</h2>${grid(["Table","Supply","Taxable ₹",...taxHead],threeB.map(([n,l,t])=>[n,l,formatINR(t.taxablePaise),formatINR(t.igstPaise),formatINR(t.cgstPaise),formatINR(t.sgstPaise+t.utgstPaise),formatINR(t.cessPaise)]))}</div>
@@ -140,4 +143,36 @@ export async function viewReturns(route, token, ui, selectedCreditId) {
       announce(result);
     }catch(err){ if(still(token))fail(formMessage,err instanceof SyntaxError?"Choose a valid GSTR-2B JSON file from the GST portal.":err.message); }finally{button.disabled=false;}
   };
+  showUploadCheck();
+
+  /* The upload summary is fetched after the page is on screen so the worksheets never wait for it. */
+  async function showUploadCheck() {
+    const box=root.querySelector("[data-upload-check]");
+    if(!box)return;
+    let check;
+    try { check=await api(base+"/gst-returns/json/summary?"+query); }
+    catch(error){ if(still(token)){ box.innerHTML=`<p class="quiet">The upload file check could not run. ${esc(error.message)}</p>`; box.setAttribute("aria-busy","false"); } return; }
+    if(!still(token))return;
+    box.innerHTML=uploadCheckMarkup(check);
+    box.setAttribute("aria-busy","false");
+  }
+  function uploadCheckMarkup(check) {
+    const used=JSON_SECTIONS.filter(([name])=>check.sections?.[name]?.documents);
+    const amount=paise=>paise?`<td class="figure">${money(paise)}</td>`:'<td class="figure quiet">—</td>';
+    const sectionRows=used.map(([name,label])=>{ const t=check.sections[name]; return `<tr><th scope="row"><span class="code">${esc(name)}</span><small>${esc(label)}</small></th><td class="gst-num">${Number(t.documents)||0}</td><td class="gst-num">${Number(t.items)||0}</td>${amount(t.invoiceValuePaise)}${amount(t.taxablePaise)}${amount(t.igstPaise)}${amount(t.cgstPaise)}${amount(t.sgstPaise)}${amount(t.cessPaise)}</tr>`; });
+    const hsn=check.hsn||{}, docs=check.docIssue||{}, nil=check.nil||{};
+    const hsnText=hsn.layout==="split"?`Split into B2B and B2C tables, ${count(hsn.b2b?.rows||0,"B2B row")} and ${count(hsn.b2c?.rows||0,"B2C row")}`:`One combined table, ${count((hsn.b2b?.rows||0)+(hsn.b2c?.rows||0),"row")}`;
+    const docText=`${count(docs.ranges||0,"number range")} across ${docs.categories===1?"1 document type":`${docs.categories||0} document types`}. ${count(docs.documents||0,"document")} issued, ${docs.cancelled||0} cancelled.`;
+    const headsText=check.taxHeads==="derived"?"Worked out from rate and taxable value":"Taken from the booked vouchers";
+    const problems=[
+      ...(check.issues||[]).map(issue=>`<li>${issue.voucherId?`<a class="code" href="${href}/v/${encodeURIComponent(issue.type)}/${encodeURIComponent(issue.voucherId)}">${esc(issue.number)}</a>`:issue.id?sourceLink(issue):`<span class="code">${esc(issue.number||"")}</span>`}: ${esc(issue.reason||issue.message||"")}</li>`),
+      ...(check.warnings||[]).map(warning=>`<li><span class="code">${esc(warning.path)}</span> holds ${/\.qty$/.test(warning.path||"")?`a negative quantity of ${esc(Math.abs(Number(warning.value)))}`:`a negative amount of ₹${esc(formatINR(Math.abs(Math.round(Number(warning.value)*100))))}`}. ${esc(warning.message)}.</li>`),
+      ...(check.hsnComplete===false?[`<li>The HSN summary is not complete. Settle the HSN and SAC review and the Table 12 reconciliation on this page first.</li>`]:[])
+    ];
+    const head=["Section","Documents","Items","Invoice value ₹","Taxable ₹","IGST ₹","CGST ₹","SGST ₹","Cess ₹"];
+    return `<p>${check.ready?'<span class="pill ok">Ready to upload</span>':'<span class="pill warn">Check before uploading</span>'}</p>
+      <dl class="kv"><dt>File name</dt><dd class="code">${esc(check.fileName)}</dd><dt>Return period</dt><dd><span class="code">${esc(check.fp)}</span> for ${esc(monthLabel(check.month))}</dd><dt>Version</dt><dd class="code">${esc(check.version)}</dd><dt>Tax heads</dt><dd>${headsText}</dd><dt>HSN summary</dt><dd>${hsnText}</dd><dt>Documents issued</dt><dd>${docText}</dd><dt>Nil, exempt and non-GST</dt><dd>${count(nil.rows||0,"row")}</dd></dl>
+      ${problems.length?`<div class="attention-rule"><p>Settle ${problems.length===1?"this point":"these points"} before uploading the file.</p><ul>${problems.join("")}</ul></div>`:""}
+      ${used.length?`<div class="table-scroll"><table><thead><tr>${head.map((c,i)=>`<th${i>2?' class="figure"':i?' class="gst-num"':""}>${esc(c)}</th>`).join("")}</tr></thead><tbody>${sectionRows.join("")}</tbody></table></div>`:`<p class="empty">The file has no invoice or note sections for this month. <a href="${href}/gst-invoice">Post a sales invoice</a> dated in it to fill them.</p>`}`;
+  }
 }

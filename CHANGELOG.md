@@ -21,6 +21,11 @@ All notable changes to Ledgercraft are recorded here. Dates are dd-mm-yyyy.
 
 - A book that opened from its backup copy shows the server's warning on every page until the next clean save. Deleting a voucher, ledger or group sends the copy you were looking at, so a stale delete is refused.
 - The profit and loss and balance sheet pages explain the financial-year rule in their introductions.
+- Books settings under Books: numbering series for each voucher type (prefix, suffix with the {fy} token, width, restart each financial year and an optional next number) with the next number shown as the server will issue it, and books and GST period locks that each need a reason to set or lift. Every change is written to the edit log.
+- Edit log under Books: every change to the books, newest first, filtered by dates, entry type and words, with a verified or broken chain shown at the top, action pills, links to the vouchers, GST documents and ledgers involved, and 100 entries at a time.
+- Party statements under Books: sundry debtors and creditors with closing balance, amount overdue more than 30 days, ageing in six buckets, MSME marks and footer totals, plus a printable statement of account per party with running balance, due dates, overdue days, open items and a CSV download. The ledger report links to it for party ledgers.
+- The ledger form takes credit days for sundry debtors and creditors and an MSME mark for creditors (45-day payment rule), and the ledgers table shows them.
+- On a new voucher the suggested number follows the voucher date, so yearly series give the right number for a date in another financial year.
 
 ### Books
 - Income and expense ledgers start every financial year at nil in the trial balance, ledger report and group summary. Earlier years' profit appears as one brought-forward row under Capital, and the balance sheet shows retained profit separately from the current year's profit.

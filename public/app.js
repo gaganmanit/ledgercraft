@@ -130,7 +130,7 @@ const destinations = [
   ["GST", [["gst-invoice", "New invoice"], ["gst-register", "Invoice register"], ["gst-returns", "GST returns"], ["gst-rcm", "Reverse charge"], ["gst-itc", "Purchase ITC review"], ["gst", "GST setup"]]],
   ["Inventory", [["stock", "Stock summary"]]],
   ["Statements", [["cash-bank", "Cash & bank"], ["bank-reconciliation", "Bank reconciliation"], ["outstanding", "Outstanding"], ["bill-outstanding", "Bill-wise ageing"], ["tb", "Trial balance"], ["pl", "Profit & loss"], ["bs", "Balance sheet"], ["group-summary", "Group summary"]]],
-  ["Books", [["ledgers", "Ledgers"], ["groups", "Groups"], ["transfer", "Import & export"], ["tally-import", "Tally migration"]]],
+  ["Books", [["ledgers", "Ledgers"], ["groups", "Groups"], ["parties", "Party statements"], ["audit", "Edit log"], ["settings", "Settings"], ["transfer", "Import & export"], ["tally-import", "Tally migration"]]],
 ];
 
 function dateLabel(iso) { return iso.split("-").reverse().join("-"); }
@@ -548,6 +548,21 @@ function groupPath(company, groupId) {
   return names.join(" › ");
 }
 
+/* True when the group, or any group above it, is the target group. */
+function underGroup(company, groupId, targetId) {
+  const seen = new Set();
+  let group = company.groups.find((item) => item.id === groupId);
+  while (group && !seen.has(group.id)) {
+    if (group.id === targetId) return true;
+    seen.add(group.id);
+    group = company.groups.find((item) => item.id === group.parentId);
+  }
+  return false;
+}
+const PARTY_GROUPS = ["g-debtors", "g-creditors"];
+/* Reserved groups that can never sit under Sundry Debtors or Sundry Creditors, so the ledger report skips the masters lookup for them. */
+const NON_PARTY_GROUPS = new Set(["g-capital", "g-reserves", "g-current-assets", "g-bank", "g-cash", "g-deposits", "g-advances", "g-stock", "g-current-liab", "g-duties", "g-provisions", "g-fixed", "g-invest", "g-loans", "g-od", "g-secured", "g-unsecured", "g-branch", "g-suspense", "g-misc", "g-sales", "g-purchase", "g-direct-exp", "g-direct-inc", "g-indirect-exp", "g-indirect-inc"]);
+
 function lockEntryForm(form) {
   const enabled = [...form.elements].filter((control) => !control.disabled);
   for (const control of enabled) control.disabled = true;
@@ -621,8 +636,18 @@ async function viewLedgers(token, id) {
   if (!still(token)) return;
   document.title = `Ledgers · ${company.name}`;
   const groups = company.groups.map((group) => `<option value="${esc(group.id)}">${esc(groupPath(company, group.id))}</option>`).join("");
-  const rows = company.ledgers.slice().sort((a, b) => a.name.localeCompare(b.name)).map((ledger) => `<tr data-ledger-row data-search="${esc(`${ledger.name} ${groupPath(company, ledger.groupId)}`.toLowerCase())}">
-    <th scope="row"><a href="#/c/${esc(id)}/ledger/${esc(ledger.id)}">${esc(ledger.name)}</a></th><td>${esc(groupPath(company, ledger.groupId))}</td>
+  /* Credit terms belong to sundry debtors and creditors; MSME status only to creditors. */
+  const partyKind = (groupId) => ({ creditor: underGroup(company, groupId, "g-creditors"), debtor: underGroup(company, groupId, "g-debtors") });
+  const termsText = (ledger) => {
+    const kind = partyKind(ledger.groupId);
+    if (!kind.creditor && !kind.debtor) return "";
+    const parts = [];
+    if (Number.isInteger(ledger.creditDays)) parts.push(`${ledger.creditDays} credit ${ledger.creditDays === 1 ? "day" : "days"}`);
+    if (kind.creditor && ledger.msme === true) parts.push("MSME");
+    return parts.join(", ");
+  };
+  const rows = company.ledgers.slice().sort((a, b) => a.name.localeCompare(b.name)).map((ledger) => `<tr data-ledger-row data-search="${esc(`${ledger.name} ${groupPath(company, ledger.groupId)} ${termsText(ledger)}`.toLowerCase())}">
+    <th scope="row"><a href="#/c/${esc(id)}/ledger/${esc(ledger.id)}">${esc(ledger.name)}</a>${termsText(ledger) ? `<div class="quiet">${esc(termsText(ledger))}</div>` : ""}</th><td>${esc(groupPath(company, ledger.groupId))}</td>
     <td class="figure">${ledger.opening.paise ? `${esc(formatINR(ledger.opening.paise))}<span class="dc">${esc(ledger.opening.dc)}</span>` : "—"}</td>
     <td><button class="ghost" data-edit-ledger="${esc(ledger.id)}">Edit</button></td></tr>`).join("");
   root.innerHTML = page({ company, folio: "Ld", kicker: "Masters", title: "Ledgers",
@@ -634,7 +659,10 @@ async function viewLedgers(token, id) {
         <label>Group <select name="groupId">${groups}</select></label>
         <label>Opening balance <input name="opening" inputmode="decimal" value="0.00" /></label>
         <label>Side <select name="openingDc"><option value="Dr">Debit</option><option value="Cr">Credit</option></select></label>
-        <p class="quiet" id="opening-note" hidden>Vouchers use this ledger. Its opening balance is fixed.</p>
+        <label data-credit-days hidden>Credit days <input name="creditDays" type="number" min="0" max="3650" step="1" inputmode="numeric" placeholder="0" aria-describedby="credit-days-note" /></label>
+        <p class="field-note" id="credit-days-note" data-credit-days hidden>Statements and ageing add these days to each bill date to find when it falls due. Leave blank for payment on the bill date.</p>
+        <label class="check" data-msme-field hidden><input type="checkbox" name="msme" /><span>Registered MSME supplier (45-day payment rule)<small>Bills unpaid more than 45 days after their date are flagged, because Section 43B(h) of the Income-tax Act allows them as an expense only in the year they are paid.</small></span></label>
+        <label data-opening-reason hidden>Reason for correcting the opening balance <textarea name="reason" maxlength="240" rows="2" placeholder="For example: audited opening balance for FY 2026-27 received from the CA"></textarea><small class="field-note" id="opening-note">Vouchers already use this ledger. A correction needs a reason of 10 to 240 characters and is written to the edit log.</small></label>
         <div class="actions"><button type="submit">Add the ledger</button><button type="button" class="ghost" id="ledger-cancel" hidden>Cancel edit</button><button type="button" class="danger" id="ledger-remove" hidden>Remove ledger</button></div>
       </form>` });
   const form = document.querySelector("#ledger-form");
@@ -643,6 +671,14 @@ async function viewLedgers(token, id) {
   form.addEventListener("input", () => { form.dataset.dirty = "1"; });
   form.addEventListener("change", () => { form.dataset.dirty = "1"; });
   const discardChanges = () => form.dataset.dirty !== "1" || confirm("Discard the changes in this form?");
+  const showTerms = () => {
+    const kind = partyKind(form.elements.groupId.value);
+    for (const field of form.querySelectorAll("[data-credit-days]")) field.hidden = !(kind.creditor || kind.debtor);
+    form.querySelector("[data-msme-field]").hidden = !kind.creditor;
+    return kind;
+  };
+  form.elements.groupId.addEventListener("change", showTerms);
+  showTerms();
   document.querySelector("#ledger-search").addEventListener("input", (event) => {
     const query = event.target.value.toLowerCase().trim();
     for (const row of document.querySelectorAll("[data-ledger-row]")) row.hidden = !row.dataset.search.includes(query);
@@ -656,9 +692,11 @@ async function viewLedgers(token, id) {
     form.elements.groupId.value = editing.groupId;
     form.elements.opening.value = formatINR(editing.opening.paise);
     form.elements.openingDc.value = editing.opening.dc;
-    form.elements.opening.disabled = used;
-    form.elements.openingDc.disabled = used;
-    document.querySelector("#opening-note").hidden = !used;
+    form.elements.creditDays.value = Number.isInteger(editing.creditDays) ? String(editing.creditDays) : "";
+    form.elements.msme.checked = editing.msme === true;
+    showTerms();
+    form.elements.reason.value = "";
+    form.querySelector("[data-opening-reason]").hidden = !used;
     form.querySelector("h2").textContent = "Edit ledger";
     form.querySelector("[type=submit]").textContent = "Save ledger";
     document.querySelector("#ledger-cancel").hidden = false;
@@ -672,10 +710,13 @@ async function viewLedgers(token, id) {
     saving = true;
     const button = form.querySelector("[type=submit]");
     button.disabled = true;
+    const kind = showTerms();
+    const days = form.elements.creditDays.value.trim();
+    const terms = { creditDays: (kind.creditor || kind.debtor) && days !== "" ? Number(days) : null, msme: kind.creditor ? form.elements.msme.checked : false };
     const unlock = lockEntryForm(form);
     try {
       await api(`/api/companies/${encodeURIComponent(id)}/ledgers${editing ? `/${encodeURIComponent(editing.id)}` : ""}`, {
-        method: editing ? "PUT" : "POST", body: { name: form.elements.name.value, groupId: form.elements.groupId.value, openingPaise: parseRupees(form.elements.opening.value), openingDc: form.elements.openingDc.value, expected: editing ? { name: editing.name, groupId: editing.groupId, opening: editing.opening } : undefined },
+        method: editing ? "PUT" : "POST", body: { name: form.elements.name.value, groupId: form.elements.groupId.value, openingPaise: parseRupees(form.elements.opening.value), openingDc: form.elements.openingDc.value, ...terms, ...(editing && form.elements.reason.value.trim() ? { reason: form.elements.reason.value.trim() } : {}), expected: editing ? { name: editing.name, groupId: editing.groupId, opening: editing.opening } : undefined },
       });
       render();
     } catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message, form); }
@@ -780,6 +821,23 @@ async function viewVoucher(token, id, type, voucherId) {
   };
   form.addEventListener("input", rememberDraft);
   form.addEventListener("change", rememberDraft);
+  /* The suggested number depends on the date when a series restarts each financial year. Follow the date while the number is still the suggestion. */
+  let suggestedNumber = existing ? null : nextNumbers[type];
+  let numberTicket = 0;
+  const followDate = async () => {
+    const date = form.elements.date.value;
+    if (suggestedNumber === null || form.elements.number.value !== suggestedNumber || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    const ticket = ++numberTicket;
+    try {
+      const { preview } = await api(`/api/companies/${encodeURIComponent(id)}/numbering?date=${encodeURIComponent(date)}`);
+      if (!still(token) || ticket !== numberTicket || form.elements.number.value !== suggestedNumber || !preview?.[type]) return;
+      form.elements.number.value = preview[type];
+      suggestedNumber = preview[type];
+      rememberDraft();
+    } catch { /* Keep the current suggestion; the server still checks the number when the voucher is passed. */ }
+  };
+  form.elements.date.addEventListener("change", followDate);
+  if (!existing && selectedDate !== todayISO()) followDate();
   document.querySelector("#discard-draft")?.addEventListener("click", () => { sessionStorage.removeItem(draftKey); render(); });
   const lineAction = () => {
     if (saving || form.querySelector("#line-action").disabled) return;
@@ -889,6 +947,15 @@ async function viewLedger(token, id, ledgerId) {
     `/api/companies/${encodeURIComponent(id)}/reports/ledger/${encodeURIComponent(ledgerId)}?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`,
   );
   if (!still(token)) return;
+  /* Sundry debtors and creditors, including ledgers in groups beneath them, also have a statement of account. */
+  let partyLedger = PARTY_GROUPS.includes(report.ledger.groupId);
+  if (!partyLedger && report.ledger.groupId && !NON_PARTY_GROUPS.has(report.ledger.groupId)) {
+    try {
+      const { company } = await api(`/api/companies/${encodeURIComponent(id)}/masters`);
+      partyLedger = PARTY_GROUPS.some((groupId) => underGroup(company, report.ledger.groupId, groupId));
+    } catch { /* The statement link is a convenience; the ledger report stands without it. */ }
+    if (!still(token)) return;
+  }
   document.title = `${report.ledger.name} · ${bundle.company.name}`;
   const opening = `<tr><th scope="row">Opening</th><td></td><td></td>${figure(report.opening.dc === "Dr" ? report.opening.paise : 0)}${figure(report.opening.dc === "Cr" ? report.opening.paise : 0)}<td class="figure">${esc(formatINR(report.opening.paise))}<span class="dc">${esc(report.opening.dc)}</span></td></tr>`;
   const lineHtml = (line) => `<tr>
@@ -904,7 +971,7 @@ async function viewLedger(token, id, ledgerId) {
     folio: "Ac",
     kicker: "Ledger",
     title: report.ledger.name,
-    body: `${periodBar(range)}
+    body: `${partyLedger ? `<div class="actions"><a href="#/c/${esc(id)}/parties/${esc(encodeURIComponent(ledgerId))}">Party statement</a></div>` : ""}${periodBar(range)}
       <table>
         <thead><tr><th>Date</th><th>No.</th><th>Particulars</th><th class="figure">Debit</th><th class="figure">Credit</th><th class="figure">Balance</th></tr></thead>
         <tbody></tbody>
@@ -1135,6 +1202,18 @@ async function renderRoute(token) {
     if (route.name.startsWith("gst")) {
       const { viewGst } = await import("/gst-ui.js");
       if (await viewGst(route, token, ui)) return;
+    }
+    if (route.name === "settings") {
+      const { viewSettings } = await import("/settings-ui.js");
+      return await viewSettings(route, token, ui);
+    }
+    if (route.name === "audit") {
+      const { viewAudit } = await import("/audit-ui.js");
+      return await viewAudit(route, token, ui);
+    }
+    if (route.name === "parties") {
+      const { viewParties } = await import("/party-ui.js");
+      return await viewParties(route, token, ui);
     }
     if (route.name === "tally-import" || route.name === "tally-source") {
       const { viewTally } = await import("/tally-tools.js");

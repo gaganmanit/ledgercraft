@@ -115,7 +115,7 @@ export async function viewGst(route, token, ui) {
       <label class="wide" data-declaration hidden>Rule 46(s) declaration for this registration<textarea name="declaration" maxlength="1200" rows="3"></textarea></label>
       <div class="wide actions"><button type="submit">Save applicability</button></div>${message}</form></details>` : "";
     const itemRows = items.map(item => `<tr><th scope="row"><button class="link gst-edit-master" type="button" data-edit-item="${esc(item.id)}" aria-label="Edit ${esc(item.name)}">${esc(item.name)}</button><small class="gst-detail">${esc(item.kind === "service" ? "Service" : "Goods")}</small>${item.kind === "goods" ? `<small class="gst-detail"><a href="${book}/stock-item/${encodeURIComponent(item.id)}">Stock ledger and costing</a></small>` : ""}</th><td class="code">${esc(item.hsnSac)}</td><td>${esc(item.unit)}</td><td class="gst-num">${item.kind === "goods" ? esc(state.inventory?.find(row => row.itemId === item.id)?.quantity || item.openingQuantity) : "—"}</td><td class="gst-num">${decimal(item.gstRateBps)}%</td><td class="figure">${money(item.pricePaise)}</td></tr>`).join("");
-    const partyRows = parties.map(party => `<tr><th scope="row"><button class="link gst-edit-master" type="button" data-edit-party="${esc(party.id)}" aria-label="Edit ${esc(party.name)}">${esc(party.name)}</button></th><td>${party.gstin ? `<span class="code">${esc(party.gstin)}</span>` : '<span class="quiet">Unregistered</span>'}</td><td>${esc(stateName(party.stateCode))}</td><td>${esc(ROLES[party.kind] || party.kind)}</td></tr>`).join("");
+    const partyRows = parties.map(party => `<tr><th scope="row"><button class="link gst-edit-master" type="button" data-edit-party="${esc(party.id)}" aria-label="Edit ${esc(party.name)}">${esc(party.name)}</button>${Number.isInteger(party.creditDays) ? `<small class="quiet">${party.creditDays === 1 ? "1 credit day" : `${party.creditDays} credit days`}</small>` : ""}</th><td>${party.gstin ? `<span class="code">${esc(party.gstin)}</span>` : '<span class="quiet">Unregistered</span>'}</td><td>${esc(stateName(party.stateCode))}</td><td>${esc(ROLES[party.kind] || party.kind)}</td></tr>`).join("");
     render("GST setup & catalog", `<section class="subsection"><h2>Business registration</h2>${registrations.length ? `<label class="gst-registration-choice">Registration<select data-registration-choice>${registrationOptions()}<option value="">Add another registration</option></select></label>` : `<p class="subsection-intro">Enter the GSTIN and address that will print on your invoices.</p>`}<form id="gst-registration" class="form-grid">
       <input type="hidden" name="id" value="${esc(registration.id || "")}">
       ${field("name", "Registration name", registration.name || company.name, 'required maxlength="80"')}
@@ -157,6 +157,7 @@ export async function viewGst(route, token, ui) {
         ${field("pincode", "PIN code", "", 'inputmode="numeric" pattern="[0-9]{6}" maxlength="6"')}
         ${field("phone", "Phone", "", 'type="tel" maxlength="30"')}
         ${field("email", "Email", "", 'type="email" maxlength="120"')}
+        <label>Credit days (optional)<input name="creditDays" type="number" inputmode="numeric" min="0" max="3650" step="1"><span class="field-note">Due date for ageing is the document date plus these days</span></label>
         <div class="wide actions"><button type="submit">Save party</button><button type="button" class="ghost" data-new-party>New party</button></div>${message}
       </form></details></div>
     </section>`);
@@ -190,7 +191,7 @@ export async function viewGst(route, token, ui) {
       bindMaster("#gst-turnover", "turnover", form => object(form), "Turnover band saved for this PAN and financial year.");
     }
     bindMaster("#gst-registration", "settings", form => object(form), "Business registration saved.");
-    bindMaster("#gst-party", "parties", form => object(form), "Party saved.");
+    bindMaster("#gst-party", "parties", form => ({ ...object(form), creditDays: form.get("creditDays") === "" ? null : Number(form.get("creditDays")) }), "Party saved.");
     bindMaster("#gst-item", "items", form => ({ id: form.get("id") || undefined, name: form.get("name"), kind: form.get("kind"), hsnSac: form.get("hsnSac"), unit: form.get("unit"), pricePaise: parseRupees(form.get("price")), purchasePricePaise: parseRupees(form.get("purchasePrice")), gstRateBps: rateBps(form.get("gstRate")), cessRateBps: rateBps(form.get("cessRate")), supplyStatus: form.get("supplyStatus"), openingQuantity: form.get("kind") === "goods" ? form.get("openingQuantity") : "0" }), "Item saved.");
     const itemSummary = root.querySelector("[data-item-summary]");
     const partySummary = root.querySelector("[data-party-summary]");
@@ -212,7 +213,7 @@ export async function viewGst(route, token, ui) {
       const form = root.querySelector("#gst-party");
       form.closest("details").open = true;
       partySummary.textContent = `Edit ${party.name}`;
-      for (const name of ["id", "name", "kind", "gstin", "stateCode", "address", "pincode", "phone", "email"]) form.elements[name].value = party[name] ?? "";
+      for (const name of ["id", "name", "kind", "gstin", "stateCode", "address", "pincode", "phone", "email", "creditDays"]) form.elements[name].value = party[name] ?? "";
       form.elements.name.focus();
       form.scrollIntoView({ block: "center" });
     });
