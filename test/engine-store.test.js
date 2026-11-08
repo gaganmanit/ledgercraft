@@ -37,7 +37,7 @@ test("each save keeps the previous file as a single rolling .bak and leaves no t
     const companyBak = await readJson(path.join(folder, "company.json.bak"));
     assert.equal(companyBak.ledgers.some((item) => item.name === "Sales"), false);
     const files = (await readdir(folder)).sort();
-    assert.deepEqual(files, ["company.json", "company.json.bak", "vouchers.json", "vouchers.json.bak"]);
+    assert.deepEqual(files, ["audit.jsonl", "company.json", "company.json.bak", "vouchers.json", "vouchers.json.bak"]);
   });
 });
 
@@ -149,7 +149,7 @@ test("an imported company is published with fsynced files and no leftover stage 
     assert.equal(entries.some((name) => name.startsWith(".financer-import-")), false);
     const opened = await createStore(dataDir).get(imported.company.id);
     assert.deepEqual(opened.vouchers.map((item) => item.number), ["RCT-1"]);
-    assert.deepEqual((await readdir(path.join(dataDir, "companies", imported.company.id))).sort(), ["company.json", "vouchers.json"]);
+    assert.deepEqual((await readdir(path.join(dataDir, "companies", imported.company.id))).sort(), ["audit.jsonl", "company.json", "vouchers.json"]);
   });
 });
 

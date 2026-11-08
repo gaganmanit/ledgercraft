@@ -241,3 +241,36 @@ test("large safe opening balances exported by the app remain importable", () => 
   const totals = bookBalances(book.company, trialBalance(book.company, [], FROM, TO).rows);
   assert.equal(totals.cashBank, Number.MAX_SAFE_INTEGER);
 });
+
+test("outstanding rows carry ageing, oldest date and MSME arrears with per-side bucket totals", () => {
+  const book = makeBook();
+  const parties = outstanding(book.company, book.vouchers, FROM, TO);
+  const mill = parties.creditors[0];
+  // Existing fields are unchanged.
+  assert.equal(mill.name, "Mill Stores");
+  assert.deepEqual(mill.closing, { dc: "Cr", paise: 1_500_000 });
+  assert.deepEqual(mill.ageing.map((row) => row.label), ["current", "1-30", "31-60", "61-90", "91-180", "over180"]);
+  assert.equal(mill.ageing.find((row) => row.label === "over180").paise, 1_500_000);
+  assert.equal(mill.oldestDate, "2026-04-12");
+  assert.equal(mill.msme, false);
+  assert.equal(mill.msmeOverduePaise, 0);
+  assert.equal(parties.asOf, TO);
+  assert.equal(parties.ageing.payable.buckets.find((row) => row.label === "over180").paise, 1_500_000);
+  assert.equal(parties.ageing.receivable.buckets.reduce((sum, row) => sum + row.paise, 0), 0);
+  assert.equal(parties.msmeOverduePaise, 0);
+  // An MSME supplier with a recent bill and a debtor in advance.
+  book.company.ledgers.find((row) => row.id === "l-mill").msme = true;
+  book.company.ledgers.push({ id: "l-buyer", name: "Advance buyer", groupId: "g-debtors", opening: { dc: "Cr", paise: 2_000 } });
+  book.vouchers.push({ id: "v-new-purchase", type: "Purchase", date: "2026-11-01", number: "PUR-2", narration: "", lines: [{ ledgerId: "l-purchase", dc: "Dr", paise: 300_000 }, { ledgerId: "l-mill", dc: "Cr", paise: 300_000 }] });
+  const msme = outstanding(book.company, book.vouchers, FROM, TO);
+  const supplier = msme.creditors.find((row) => row.ledgerId === "l-mill");
+  assert.equal(supplier.msme, true);
+  assert.equal(supplier.msmeOverduePaise, 1_500_000);
+  assert.equal(supplier.ageing.find((row) => row.label === "1-30").paise, 300_000);
+  assert.equal(msme.msmeOverduePaise, 1_500_000);
+  const buyer = msme.debtors.find((row) => row.ledgerId === "l-buyer");
+  assert.equal(buyer.advancePaise, 2_000);
+  assert.equal(buyer.oldestDate, null);
+  assert.equal(msme.ageing.receivable.advancePaise, 2_000);
+  assert.equal(msme.receivable, -2_000);
+});

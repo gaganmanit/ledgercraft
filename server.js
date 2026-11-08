@@ -20,6 +20,7 @@ import { handleGstRoute } from "./lib/gst-store-routes.js";
 import { handleTallyRoute } from "./lib/tally-routes.js";
 import { searchHSN } from "./lib/hsn-directory.js";
 import { handleBookRoute } from "./lib/book-routes.js";
+import { handleStatementRoute } from "./lib/statement-routes.js";
 import { createStore } from "./lib/store.js";
 import { balanceSheet, dayBook, ledgerReport, profitAndLoss, trialBalance } from "./lib/engine.js";
 
@@ -294,7 +295,7 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
         return;
       }
       const context = { req, res, url, parts, store, dataDir, readBody, send };
-      if (await handleAmendmentRoute(context) || await handleReconciliationRoute(context) || await handleGstExchangeRoute(context) || await handleStockRoute(context) || await handleRcmRoute(context) || await handleItcRoute(context) || await handleGstRoute(context) || await handleTallyRoute(context) || await handleReturnRoute(context)) return;
+      if (await handleAmendmentRoute(context) || await handleReconciliationRoute(context) || await handleGstExchangeRoute(context) || await handleStockRoute(context) || await handleRcmRoute(context) || await handleItcRoute(context) || await handleGstRoute(context) || await handleTallyRoute(context) || await handleReturnRoute(context) || await handleStatementRoute(context)) return;
       if (await handleBookRoute(context)) return;
       if (req.method === "GET" && url.pathname === "/api/companies") {
         send(res, 200, { companies: await store.list() });

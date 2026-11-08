@@ -154,3 +154,38 @@ test("http books round-trip", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("http books keep a verified edit log, honour a books lock and suggest numbers from the saved series", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "financer-http-controls-"));
+  const server = await start({ port: 0, dataDir: dir });
+  const base = `http://127.0.0.1:${server.address().port}/api/companies`;
+  const call = async (route, method = "GET", body) => {
+    const response = await fetch(base + route, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    return { status: response.status, body: await response.json() };
+  };
+  try {
+    const { body: created } = await call("", "POST", { name: "Controls Mills", booksFrom: "2026-04-01" });
+    const id = created.company.id;
+    const { body: withSales } = await call(`/${id}/ledgers`, "POST", { name: "Sales", groupId: "g-sales", openingPaise: 0, openingDc: "Cr" });
+    const salesId = withSales.company.ledgers.find((ledger) => ledger.name === "Sales").id;
+    const entry = (number, date) => ({ type: "Receipt", date, number, narration: "Counter", lines: [{ ledgerId: "l-cash", dc: "Dr", paise: 10000 }, { ledgerId: salesId, dc: "Cr", paise: 10000 }] });
+    assert.equal((await call(`/${id}/vouchers`, "POST", entry("RCT-1", "2026-04-04"))).status, 201);
+    assert.equal((await call(`/${id}/locks`, "PUT", { books: { to: "2026-04-30", reason: "April closed" } })).status, 200);
+    const refused = await call(`/${id}/vouchers`, "POST", entry("RCT-2", "2026-04-20"));
+    assert.equal(refused.status, 400);
+    assert.equal(refused.body.error, "The books are locked up to 30-04-2026 (April closed). Unlock them under Books settings to change this entry.");
+    assert.equal((await call(`/${id}/vouchers`, "POST", entry("RCT-2", "2026-05-02"))).status, 201);
+    const report = await call(`/${id}/reports/trial-balance?from=2026-04-01&to=2026-04-30`);
+    assert.equal(report.body.credit, 10000);
+    assert.equal((await call(`/${id}/numbering`, "PUT", { numbering: { Receipt: { prefix: "CR/", suffix: "/{fy}", width: 3, restartEachFY: true } } })).status, 200);
+    const masters = await call(`/${id}/masters`);
+    assert.match(masters.body.nextNumbers.Receipt, /^CR\/00\d\/\d{2}-\d{2}$/);
+    const audit = await call(`/${id}/audit`);
+    assert.equal(audit.body.verified, true);
+    assert.deepEqual(audit.body.entries.map((row) => `${row.action}:${row.entity}`), ["alter:numbering", "create:voucher", "lock:lock", "create:voucher", "create:ledger", "create:company"]);
+    assert.equal((await call(`/missing-company/audit`)).status, 404);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dir, { recursive: true, force: true });
+  }
+});

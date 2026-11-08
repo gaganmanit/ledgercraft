@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -170,5 +170,58 @@ test("balanced maximum-safe openings remain supported", async () => {
     assert.equal(book.company.ledgers[0].opening.paise, Number.MAX_SAFE_INTEGER);
     const trial = trialBalance(book.company, book.vouchers, company.booksFrom, "2026-04-02");
     assert.equal(trial.difference, 0);
+  });
+});
+
+test("an opening balance on a used ledger changes only with a reason, and the edit log keeps before and after", async () => {
+  await withStore(async (store, dataDir) => {
+    const { company } = await store.create({ name: "Opening Correction Book", booksFrom: "2026-04-01" });
+    const id = company.id;
+    await store.updateLedger(id, "l-cash", { name: "Cash", groupId: "g-cash", openingPaise: 50000, openingDc: "Dr" });
+    let book = await store.addLedger(id, { name: "Capital", groupId: "g-capital", openingPaise: 50000, openingDc: "Cr" });
+    const capital = book.company.ledgers.find((ledger) => ledger.name === "Capital");
+    book = await store.addLedger(id, { name: "Sales", groupId: "g-sales", openingPaise: 0, openingDc: "Cr" });
+    const sales = book.company.ledgers.find((ledger) => ledger.name === "Sales");
+    await store.passVoucher(id, { type: "Receipt", date: "2026-04-02", number: "RCT-1", narration: "", lines: [{ ledgerId: "l-cash", dc: "Dr", paise: 1000 }, { ledgerId: sales.id, dc: "Cr", paise: 1000 }] });
+    const cash = { name: "Cash", groupId: "g-cash", openingPaise: 62550, openingDc: "Dr" };
+    await assert.rejects(store.updateLedger(id, "l-cash", cash), /only before a voucher uses this ledger\. Give a reason for the correction \(10 to 240 characters\) to change it now/);
+    await assert.rejects(store.updateLedger(id, "l-cash", { ...cash, reason: "Too short" }), /10 to 240 characters/);
+    await assert.rejects(store.updateLedger(id, "l-cash", { ...cash, reason: "x".repeat(241) }), /10 to 240 characters/);
+    await assert.rejects(store.updateLedger(id, "l-cash", { ...cash, reason: 42 }), /10 to 240 characters/);
+    book = await store.updateLedger(id, "l-cash", { ...cash, reason: "Cash count on 31-03-2026 was 625.50, not 500" });
+    assert.deepEqual(book.company.ledgers.find((ledger) => ledger.id === "l-cash").opening, { dc: "Dr", paise: 62550 });
+    // Balance-direction corrections are allowed with a reason as well.
+    await store.updateLedger(id, capital.id, { name: "Capital", groupId: "g-capital", openingPaise: 62550, openingDc: "Cr", reason: "Capital introduced matches the corrected cash count" });
+    const trial = trialBalance((await store.get(id)).company, (await store.get(id)).vouchers, "2026-04-01", "2026-04-30");
+    assert.equal(trial.difference, 0);
+    // A reason does not bypass the balance checks.
+    await assert.rejects(store.updateLedger(id, "l-cash", { name: "Cash", groupId: "g-cash", openingPaise: Number.MAX_SAFE_INTEGER, openingDc: "Dr", reason: "Testing the supported amount limit" }), /totals exceed/);
+
+    const log = (await readFile(path.join(dataDir, "companies", id, "audit.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    const correction = log.find((entry) => entry.entity === "ledger" && entry.reason === "Cash count on 31-03-2026 was 625.50, not 500");
+    assert.equal(correction.action, "alter");
+    assert.equal(correction.id, "l-cash");
+    assert.deepEqual(correction.before.opening, { dc: "Dr", paise: 50000 });
+    assert.deepEqual(correction.after.opening, { dc: "Dr", paise: 62550 });
+    assert.equal(correction.summary, "Ledger Cash altered: opening balance corrected from ₹500.00 Dr to ₹625.50 Dr. Reason: Cash count on 31-03-2026 was 625.50, not 500");
+  });
+});
+
+test("HTTP ledger update accepts an opening-balance correction reason", async () => {
+  await withStore(async (store, dataDir) => {
+    const book = await store.specimen();
+    const used = book.company.ledgers[0];
+    const server = await start({ dataDir });
+    const url = `http://127.0.0.1:${server.address().port}/api/companies/${book.company.id}/ledgers/${used.id}`;
+    try {
+      const put = (body) => fetch(url, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const base = { name: used.name, groupId: used.groupId, openingPaise: used.opening.paise + 100, openingDc: used.opening.dc, expected: { name: used.name, groupId: used.groupId, opening: used.opening } };
+      const refused = await put(base);
+      assert.equal(refused.status, 400);
+      assert.match((await refused.json()).error, /Give a reason for the correction/);
+      const corrected = await put({ ...base, reason: "Opening balance confirmed by the bank certificate" });
+      assert.equal(corrected.status, 200);
+      assert.equal((await corrected.json()).company.ledgers.find((ledger) => ledger.id === used.id).opening.paise, used.opening.paise + 100);
+    } finally { await new Promise((resolve) => server.close(resolve)); }
   });
 });
