@@ -25,7 +25,7 @@ export function showMatches(target, result, { esc, href, formatINR }) {
         return `<div>${esc(fields[field])} · ${esc(format(field,pair.book))} → ${esc(format(field,pair.portal))}</div>`;
       }).join("");
       const match = r.bookId ? bookLink(r.bookId, r.values.number.book) : (r.candidates || []).map(c => bookLink(c.id, c.number)).join(", ");
-      return `<tr><td>${esc(r.status)}</td><td>${esc(r.gstin)}</td><td>${esc(r.number)}<small class="gst-detail">${esc(r.section.toUpperCase())} · ${esc(humanDate(r.date))}</small>${original}</td><td>${match || "—"}</td><td>${esc(format("total",r.bookValue))}</td><td>${esc(format("total",r.portalValue))}</td><td>${detail || "—"}</td><td>${esc([r.statementITC,r.reason].filter(Boolean).join(" · ") || "—")}</td><td>${esc(r.imsStatus || "—")}</td></tr>`;
+      return `<tr><td>${esc(r.status)}</td><td>${esc(r.gstin)}</td><td>${esc(r.number)}<small class="gst-detail">${esc(r.section.toUpperCase())} · ${esc(humanDate(r.date))}</small>${original}</td><td>${match || "—"}${r.bookDate ? `<small class="gst-detail">Posted ${esc(humanDate(r.bookDate))}</small>` : ""}</td><td>${esc(format("total",r.bookValue))}</td><td>${esc(format("total",r.portalValue))}</td><td>${detail || "—"}</td><td>${esc([r.statementITC,r.reason].filter(Boolean).join(" · ") || "—")}</td><td>${esc(r.imsStatus || "—")}</td></tr>`;
     }).join("");
     table.innerHTML = `<div class="gst-scroll"><table><thead><tr>${["Status","Supplier GSTIN","Document","Book entry","Books ₹","2B ₹","Differences (books → 2B)","2B ITC","IMS"].map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>
       ${list.length > size ? `<div class="book-toolbar"><button class="secondary" data-prev ${page===0?"disabled":""}>Previous</button><span>${start+1}–${Math.min(list.length,start+size)} of ${list.length}</span><button class="secondary" data-next ${start+size>=list.length?"disabled":""}>Next</button></div>` : ""}`;
@@ -35,15 +35,15 @@ export function showMatches(target, result, { esc, href, formatINR }) {
   }
   filter.onchange = () => { page = 0; draw(); };
   target.querySelector("[data-export]").onclick = () => {
-    const header = ["Match status","GSTIN","Section","Document","Original number","Original date","ITC","Reason","IMS","Candidates","Differences",
+    const header = ["Match status","GSTIN","Section","Document","Book posting date","Original number","Original date","ITC","Reason","IMS","Candidates","Differences",
       ...Object.values(fields).flatMap(label=>[label+" (books)",label+" (2B)"])];
-    const csvRows = rows().map(r=>[r.status,r.gstin,r.section,r.number,r.original?.number,r.original?.date,r.statementITC,r.reason,r.imsStatus,
+    const csvRows = rows().map(r=>[r.status,r.gstin,r.section,r.number,r.bookDate || (r.bookId ? r.date : ""),r.original?.number,r.original?.date,r.statementITC,r.reason,r.imsStatus,
       r.candidates?.map(c=>c.number).join(" | "),r.differences.map(f=>fields[f]).join(", "),
       ...Object.keys(fields).flatMap(f=>["book","portal"].map(side => {
         const value = r.values[f][side];
         return value === undefined ? "" : monetary.has(f) ? formatINR(value).replaceAll(",","") : value;
       }))]);
-    for (const exception of result.exceptions) csvRows.push(["Separate review","","","","","","",exception]);
+    for (const exception of result.exceptions) csvRows.push(["Separate review","","","","","","","",exception]);
     const cell = value => {
       const raw = String(value ?? "");
       const safe = /^[\s]*[=+@-]/.test(raw) && !/^-?\d+(\.\d+)?$/.test(raw) ? "'" + raw : raw;

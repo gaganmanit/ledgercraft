@@ -22,7 +22,7 @@ Extend the supported return sections and correction workflows, including same-pe
 
 ### More Tally workflows
 
-Expand source-GST activation beyond the current supported sales cases. Add operational coverage for further voucher types, allocated costs, compound units, batches, manufacturing and order/receipt flows. Preserve unsupported source details until their posting and quantity effects can be reconciled explicitly.
+Extend the reviewed domestic purchase and sales workflow to additional source document types and tax treatments, including credit/debit notes, services and reverse charge. Add operational coverage for further voucher types, allocated costs, compound units, batches, manufacturing and order/receipt flows. Preserve unsupported source details until their posting and quantity effects can be reconciled explicitly.
 
 ### More inventory policies
 

@@ -316,7 +316,7 @@ async function composeInvoice(context) {
   let draft;
   try { draft = JSON.parse(localStorage.getItem(key) || "null"); } catch { draft = null; }
   const freshLine = () => ({ itemId: "", godownId: godowns[0].id, quantity: "1", unitPrice: "0.00", discount: "0", gstRate: "0", cessRate: "0", supplyStatus: "taxable" });
-  const initial = { type: "Sales", direction: "sales", registrationId: registrations[0].id, partyId: "", date: todayISO(), placeOfSupply: registrations[0].stateCode, pricing: "exclusive", supplyCategory: "domestic", exportMode: "lut", number: "", supplierInvoiceNumber: "", originalInvoiceId: "", originalNumber: "", originalDate: "", shippingAddress: "", portCode: "", shippingBillNumber: "", shippingBillDate: "", destinationCountry: "", narration: "", itcEligibility: "pending", stockEffect: "none", reverseCharge: new URLSearchParams(location.hash.split("?")[1] || "").get("rcm") === "true" ? "true" : "false", rcmBasis: "", rcmReceiptDate: "", rcmSupplierDate: "", rcmSelfDate: "", rcmAssociated: "false", rcmConfirmed: "" };
+  const initial = { type: "Sales", direction: "sales", registrationId: registrations[0].id, partyId: "", date: todayISO(), placeOfSupply: registrations[0].stateCode, pricing: "exclusive", supplyCategory: "domestic", exportMode: "lut", number: "", supplierInvoiceNumber: "", supplierInvoiceDate: "", originalInvoiceId: "", originalNumber: "", originalDate: "", shippingAddress: "", portCode: "", shippingBillNumber: "", shippingBillDate: "", destinationCountry: "", narration: "", itcEligibility: "pending", stockEffect: "none", reverseCharge: new URLSearchParams(location.hash.split("?")[1] || "").get("rcm") === "true" ? "true" : "false", rcmBasis: "", rcmReceiptDate: "", rcmSupplierDate: "", rcmSelfDate: "", rcmAssociated: "false", rcmConfirmed: "" };
   const fields = { ...initial, ...(draft?.fields || {}) };
   let lines = Array.isArray(draft?.lines) && draft.lines.length ? draft.lines : [freshLine()];
   const requestId = draft?.requestId || crypto.randomUUID();
@@ -333,6 +333,7 @@ async function composeInvoice(context) {
       ${select("reverseCharge", "Tax responsibility", '<option value="false">Forward charge</option><option value="true">Reverse charge</option>')}
       ${field("number", "Document number · automatic when empty", fields.number, 'maxlength="16" pattern="[A-Za-z0-9/\\-]+"')}
       <label data-purchase-field hidden>Supplier invoice number<input name="supplierInvoiceNumber" maxlength="16" value="${esc(fields.supplierInvoiceNumber)}"></label>
+      <label data-forward-purchase-date hidden>Supplier document date<input type="date" name="supplierInvoiceDate" value="${esc(fields.supplierInvoiceDate)}"><small>Leave blank to use the posting date.</small></label>
       <label data-purchase-field hidden>Input tax credit review<select name="itcEligibility"><option value="pending">Pending review</option><option value="eligible">Eligible</option><option value="ineligible">Ineligible</option></select></label>
       <label data-note-field hidden>Stock treatment<select name="stockEffect"><option value="none">Financial adjustment only</option><option value="quantity">Goods return / quantity adjustment</option></select></label>
       <label data-note-field hidden>Note applies to<select name="direction"><option value="sales">Sales</option><option value="purchase">Purchases</option></select></label>
@@ -416,6 +417,12 @@ async function composeInvoice(context) {
     for (const element of form.querySelectorAll("[data-customs-field]")) element.hidden = form.elements.supplyCategory.value !== "export";
     const reverseCharge = form.elements.reverseCharge.value === "true";
     const party = parties.find(row => row.id === form.elements.partyId.value);
+    form.querySelector("[data-forward-purchase-date]").hidden = !purchase || reverseCharge;
+    form.elements.supplierInvoiceDate.disabled = !purchase || reverseCharge;
+    form.elements.supplierInvoiceDate.max = form.elements.date.value;
+    form.elements.number.maxLength = purchase && !reverseCharge ? 24 : 16;
+    if (purchase && !reverseCharge) form.elements.number.removeAttribute("pattern");
+    else form.elements.number.pattern = "[A-Za-z0-9/\\-]+";
     const selfInvoice = reverseCharge && purchase && !party?.gstin && !note;
     form.querySelector("[data-rcm-fields]").hidden = !reverseCharge;
     for (const element of form.querySelectorAll("[data-rcm-inward]")) element.hidden = !purchase;
@@ -450,6 +457,7 @@ async function composeInvoice(context) {
       type, direction: type.includes("Note") ? data.get("direction") : type === "Purchase" ? "purchase" : "sales",
       registrationId: data.get("registrationId"), partyId: data.get("partyId"), date: data.get("date"), placeOfSupply: data.get("placeOfSupply"), pricing: data.get("pricing"),
       number: data.get("number") || undefined, supplierInvoiceNumber: data.get("supplierInvoiceNumber") || undefined,
+      ...(data.get("supplierInvoiceDate") ? { supplierInvoiceDate: data.get("supplierInvoiceDate") } : {}),
       originalInvoiceId: type.includes("Note") ? data.get("originalInvoiceId") || undefined : undefined,
       originalNumber: type.includes("Note") ? data.get("originalNumber") || undefined : undefined,
       originalDate: type.includes("Note") ? data.get("originalDate") || undefined : undefined,
@@ -534,8 +542,8 @@ async function composeInvoice(context) {
         form.elements.partyId.value = original.partyId;
         form.elements.registrationId.value = original.registrationId;
         form.elements.placeOfSupply.value = original.placeOfSupply;
-        form.elements.originalNumber.value = original.number;
-        form.elements.originalDate.value = original.date;
+        form.elements.originalNumber.value = original.supplierInvoiceNumber || original.number;
+        form.elements.originalDate.value = original.supplierInvoiceDate || original.date;
         form.elements.reverseCharge.value = String(Boolean(original.reverseCharge));
         if (original.rcm) {
           form.elements.rcmBasis.value = original.rcm.basisReference;
@@ -621,7 +629,7 @@ function documentMarkup(invoice, helpers) {
   return `<article class="gst-document">
     ${exportText ? `<p class="gst-export-endorsement">${esc(exportText)}</p>` : ""}
     <div class="gst-document-identity"><div><span>Document number</span><strong>${esc(invoice.number)}</strong></div><div><span>Date</span><strong>${dateLabel(invoice.date)}</strong></div></div>
-    ${purchase && !invoice.rcm?.selfInvoiceRequired ? `<p class="gst-reference">Supplier invoice ${esc(invoice.supplierInvoiceNumber || invoice.number)}</p>` : ""}
+    ${purchase && !invoice.rcm?.selfInvoiceRequired ? `<p class="gst-reference">Supplier invoice ${esc(invoice.supplierInvoiceNumber || invoice.number)}${invoice.supplierInvoiceDate ? " dated " + dateLabel(invoice.supplierInvoiceDate) : ""}</p>` : ""}
     ${invoice.originalNumber || invoice.originalInvoiceId ? `<p class="gst-reference">Against invoice ${esc(invoice.originalNumber || invoice.originalInvoiceId)}${invoice.originalDate ? " dated " + dateLabel(invoice.originalDate) : ""}</p>` : ""}
     <div class="gst-addresses"><section><h2>Supplier</h2>${address(supplier)}</section><section><h2>Recipient</h2>${address(recipient)}</section></div>
     ${invoice.reverseCharge ? `<p class="gst-export-endorsement">Tax is payable by the recipient under reverse charge.</p><p class="gst-reference">${esc(invoice.rcm.basisReference)}</p>` : ""}

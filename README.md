@@ -4,7 +4,7 @@ Ledgercraft is a local accounting app for company books, Indian GST billing and 
 
 ## Download for Mac
 
-[Download Ledgercraft 1.4.0 for Apple Silicon](https://github.com/gaganmanit/ledgercraft/releases/download/v1.4.0/Ledgercraft-1.4.0-macOS-arm64.dmg). Open the image and drag Ledgercraft.app into your Applications folder. It runs on macOS 13.5 or later. The app is ad hoc signed and has no Apple notarization.
+[Download Ledgercraft 1.5.0 for Apple Silicon](https://github.com/gaganmanit/ledgercraft/releases/download/v1.5.0/Ledgercraft-1.5.0-macOS-arm64.dmg). Open the image and drag Ledgercraft.app into your Applications folder. It runs on macOS 13.5 or later. The app is ad hoc signed and has no Apple notarization.
 
 ## Get started
 
@@ -63,7 +63,9 @@ Select XML masters and vouchers, native JSON exchange files, a supported TallyPr
 
 For a workbook containing billed quantities without actual quantities, physical stock movement needs an explicit quantity decision. The imported company's **Tally source** area retains original files, spreadsheet cells, source fields and transport references.
 
-**GST from Tally** links supported sales to the business registration, customer registration, source stock items and original posting accounts. It shows supplied GST facts with their field and date basis. Applicable historical source classifications and rates can be used for the document while the current master stays unchanged; a correction records its own reason and supporting evidence. Search and paged review retain unsaved mapping drafts. Activation applies only to selected invoices on the displayed page.
+**GST from Tally** links supported domestic goods sales and purchases to their original postings and stock movements. For a purchase, select the business registration and supplier’s creditor ledger. Review the supplier invoice number and date, place of supply, actual and billed quantities, HSN, rate and original input-tax accounts. The Tally voucher number and posting date stay in the books.
+
+An activated purchase starts with ITC pending. Match the supplier’s document to GSTR-2B and record a dated decision in **Purchase ITC review**. A purchase entered in April can match its supplier’s March invoice while the ledger continues to show the April entry. An accounting-only purchase remains available in the day book even when the source supplies too little detail to create a GST invoice.
 
 Read [Tally compatibility](TALLY-COMPATIBILITY.md) before a migration. A native Tally company folder or proprietary backup needs an export from a compatible licensed Tally installation. The included Windows companion performs read-only exports through an open company's local HTTP service.
 

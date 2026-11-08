@@ -3,6 +3,7 @@
   "checkedDate": "2026-11-08",
   "files": [
     {"name":"Tally-Sales-GST-Template.zip","url":"https://help.tallysolutions.com/wp-content/uploads/2023/11/Sales-Voucher-in-Default-Template-with-GST-E-way-and-E-invoice-details.zip","sha256":"957fe0f8c5ac9082b6fb02525f66b388d79a2977719359a0fa84628a73b9fc61","note":"Original public archive supplied in the owner's verification cache; source page links the sales/GST/e-way/e-invoice default workbook."},
+    {"name":"Tally-Vouchers-Default-Template.zip","url":"https://help.tallysolutions.com/wp-content/uploads/2023/11/Vouchers-in-Default-Template.zip","sha256":"8eda8b2be5c0217b754bafbe2e50a01a5ec9665d5cd199a4f41eb03c12980b41"},
     {"name":"Tally-Ledgers-Template.zip","url":"https://help.tallysolutions.com/wp-content/uploads/2023/11/Ledgers-in-Default-Template.zip","sha256":"b5dd7b301008ec49e017afbcf3524121a41360bd743e01eb4ba51de248ea985c"},
     {"name":"Tally-Stock-Price-Template.zip","url":"https://help.tallysolutions.com/wp-content/uploads/2023/11/Stock-item-with-price-list.zip","sha256":"0b035ca1035e23e668122aee10783ab0949958c6fa41c5be1c83a3e854665cf3"},
     {"name":"Tally-Stock-Standard-Template.zip","url":"https://help.tallysolutions.com/wp-content/uploads/2023/11/Stock-Iitem-with-Std-price-and-std-cost.zip","sha256":"4e174f01c9eb1091465ae1b655b3c50c6ba8303c9fcd5aa1101ba790984b207a"}

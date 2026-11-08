@@ -46,13 +46,15 @@ New imports save supported stock projections. Earlier imports can review activat
 
 ## GST facts and activation
 
-Imported tax ledger postings form part of the accounting book. Creating a native GST document is a separate reviewed action. The current source-GST workflow supports reconciled domestic forward-charge goods sales; unsupported document types, classifications, adjustments or tax components remain blocked or retained for review.
+Imported tax ledger postings form part of the accounting book. Creating a native GST document is a separate reviewed action. The current source-GST workflow supports reconciled domestic forward-charge taxable goods sales and purchases; unsupported document types, classifications, adjustments or tax components remain blocked or retained for review.
 
 The source review shows seller and buyer GSTINs, HSN, GST rates and tax classification facts from supported invoice fields and companion masters. Provenance identifies the source record, field and effective date. Future or conflicting master facts are distinguished from facts applicable to the invoice date.
 
-Link the seller registration, customer registration, source item and original posting accounts. Applicable historical HSN and rates can supply the invoice snapshot even when the current item master has changed. Choosing a different local value requires an explicit correction reason and supporting evidence. The review preserves the source value, local-master value and chosen basis. Saving a mapping does not rewrite the source file.
+Select the business registration, the corresponding customer or supplier ledger, the stock item and the original posting accounts. Applicable historical HSN and rates can supply the invoice snapshot even when the current item master has changed. Choosing a different local value requires an explicit correction reason and supporting evidence. The review preserves the source value, local-master value and chosen basis. Saving a mapping does not rewrite the source file.
 
 Activation checks item values, tax components, total consideration, party linkage and the exact accounting posting. It preserves the imported voucher and supported original stock linkage. Confirmed invoices then feed the supported GST returns and HSN workings. Search and pages limit the review to the displayed rows; unsaved drafts survive page changes and selections apply only to the displayed page.
+
+On a regular purchase the supplier GSTIN comes from the creditor and the buyer GSTIN from the company. The stock receipt carries actual quantity and cost, while invoice lines use billed quantity. The booking date, supplier invoice date and reviewed goods-received date are separate. A missing supplier reference or date requires supporting evidence before activation. Input tax remains pending until a dated review. A later match to a saved GSTR-2B file uses the supplier number and document date. Supported outward invoices keep their previous source representation.
 
 Source IRNs, acknowledgement numbers, e-way bill numbers and transport particulars remain source references. A repeated number or a supplied identifier does not establish an authenticated government acknowledgement. The document exchange workflow records separately imported acknowledgement evidence.
 
@@ -66,11 +68,15 @@ Ambiguous references, unsupported credit terms, contradictory allocation signs, 
 
 **All Masters** exports supported account groups, ledger openings, source-native stock items, simple units and flat godowns with their opening allocations. **Day Book** exports the supported accounting vouchers and linked inventory; supported quantity transfers export as Stock Journals. Unsupported export policies are reported explicitly.
 
+For supported activated purchases the Day Book XML includes the source voucher identity, supplier invoice reference and date, GST registrations, place of supply, item HSN and rates, input-tax postings and physical/billed quantities. Pair it with the All Masters export when reimporting into empty books. An unsupported allocation needs the full original archive. The export is tested by reimport into Ledgercraft.
+
 The original-file download reproduces the captured source bytes. Accounting XML represents the current accounting book. A full Tally archive carries both, together with import decisions and source metadata. The normal company-backup action includes this full source archive for an imported company.
 
 Restore verifies compressed payloads, file hashes, parsed source records, reviewed mappings and linked operational identities. Later edits to the accounting book are distinguished from its original source snapshot. Ordinary and full-source restoration have automated regression coverage.
 
 ## Public examples and tests
+
+TallyHelp’s general default voucher workbook posts purchase 1520 for ₹22,000 against Titan Corporation. It contains no item or tax breakdown. A separate synthetic interstate invoice tests ₹200 taxable and ₹36 IGST, three units received against two billed, a March supplier invoice booked in April, an explicitly reviewed credit claim and source restoration. [Fixture sources](test/fixtures/tally-xlsx/SOURCES.json) and [purchase workflow test](test/tally-purchase-workflow.test.js).
 
 The regression suite includes synthetic XML books and documented TallyHelp examples. Public Excel fixtures cover GST sales, ledger masters, price schedules and standard-cost fields. The GST sales workbook has four vouchers and ten item lines, totalling ₹27,200 of item value and ₹4,896 of tax. Its missing seller/HSN details, invalid buyer identifiers and repeated transport references are retained as source gaps or diagnostics. Synthetic supporting masters used in tests are labelled separately from published facts.
 

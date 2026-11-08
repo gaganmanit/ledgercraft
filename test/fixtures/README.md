@@ -1,6 +1,6 @@
 # Test fixture provenance
 
-`tally/*.xml`, `tally-gst-support.xml` and `reconciliation-ui-server.mjs` are independently authored synthetic fixtures. Company names, ledger balances, bank references and GST test identities in them are fictional test inputs. No private company export is included. The Tally XML fixtures follow the documented exchange structure; their descriptions distinguish invented prerequisite quantities and costs from arithmetic taken from public examples.
+`tally/*.xml`, `tally-gst-support.xml`, `tally-purchase-gst.xml` and `reconciliation-ui-server.mjs` are independently authored synthetic fixtures. Company names, ledger balances, bank references and GST test identities in them are fictional test inputs. No private company export is included. The Tally XML fixtures follow the documented exchange structure; their descriptions distinguish invented prerequisite quantities and costs from arithmetic taken from public examples.
 
 `tally/official/` and `tally-xlsx/` hold provenance files in source control. Their publisher ZIP/XML fixtures are absent from a fresh checkout. Prepare them with `python3 tools/prepare-resources.py --fetch --tests`; the setup downloads from the named public sources, verifies fixed SHA-256 pins and writes ignored local files. It performs no network request without `--fetch`.
 

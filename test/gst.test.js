@@ -241,3 +241,81 @@ test("HTTP registration, masters, preview, invoice, report and backup form one r
     await rm(dataDir, { recursive: true, force: true });
   }
 });
+
+test("purchase supplier dates determine 2B matching, section 16 cutoff, reference identity and restore", async () => {
+  const { reconcile2B } = await import("../lib/gst-reconcile.js");
+  const { itcClaimDeadline } = await import("../lib/gst-itc.js");
+  await book(async ({ store, company, registration, party, input }) => {
+    const purchase = { ...input, type: "Purchase", number: "101", date: "2026-04-02", supplierInvoiceNumber: "SUP/31", supplierInvoiceDate: "2026-03-31" };
+    const saved = await store.passGstInvoice(company.id, purchase);
+    const doc = saved.voucher.gst;
+    assert.equal(doc.date, "2026-04-02");
+    assert.equal(doc.supplierInvoiceDate, "2026-03-31");
+    assert.equal(itcClaimDeadline(doc).ordinary, "2026-11-30");
+    const statement = { gstin: registration.gstin, rtnprd: "042026", docdata: { b2b: [{ ctin: party.gstin,
+      inv: [{ inum: "SUP/31", dt: "31-03-2026", pos: "23", rev: "N", val: 118, txval: 100, cgst: 9, sgst: 9, itcavl: "Y" }] }] } };
+    const current = await store.snapshot(company.id);
+    const reconcile = reconcile2B(current.company, current.vouchers, registration.id, "2026-04", statement);
+    assert.equal(reconcile.results[0].status, "Matched");
+    assert.equal(reconcile.results[0].bookId, doc.id);
+    const earlier = reconcile2B(current.company, current.vouchers, registration.id, "2026-03", { ...statement, rtnprd:"032026" });
+    assert.equal(earlier.results[0].status, "Matched");
+    assert.equal(earlier.results[0].bookDate, "2026-04-02");
+    assert.equal(reconcile.results[0].candidates[0].date, "2026-03-31");
+    assert.deepEqual(validateTransfer(companyBackup(current.company, current.vouchers)).vouchers, current.vouchers);
+    await assert.rejects(store.passGstInvoice(company.id, { ...purchase, number: "P-2", date: "2026-03-31" }), /supplier document is already/i);
+    await store.passGstInvoice(company.id, { ...input, number: "101", date: "2026-04-02" });
+    await store.passGstInvoice(company.id, { ...purchase, number: "P-2", supplierInvoiceDate: "2026-04-01" });
+    const note = await store.passGstInvoice(company.id, { ...purchase, type: "Credit Note", direction: "purchase", number: "CN-1", supplierInvoiceNumber: "CN/1", date: "2026-04-08", supplierInvoiceDate: "2026-04-05", originalInvoiceId: doc.id, stockEffect:"none" });
+    assert.equal(note.voucher.gst.originalNumber, "SUP/31");
+    assert.equal(note.voucher.gst.originalDate, "2026-03-31");
+    const final = await store.snapshot(company.id);
+    assert.deepEqual(validateTransfer(companyBackup(final.company,final.vouchers)).vouchers, final.vouchers);
+    const forgedParty = structuredClone(final);
+    forgedParty.vouchers[0].gst.party.gstin = gstin("23","LMNOP1234Q");
+    assert.throws(()=>validateTransfer(forgedParty),/registration differs/);
+    const forgedRole = structuredClone(final);
+    forgedRole.vouchers[0].gst.party.kind = "customer";
+    assert.throws(()=>validateTransfer(forgedRole),/posting role/);
+    const corrupt = structuredClone(final);
+    corrupt.vouchers.find(v=>v.number==="P-2").gst.supplierInvoiceDate="2026-03-31";
+    assert.throws(()=>validateTransfer(corrupt),/supplier document is already/i);
+    await assert.rejects(store.passGstInvoice(company.id, { ...purchase, number: "P-3", supplierInvoiceDate: "2026-04-03" }), /supplier document date/i);
+  });
+});
+
+test("earlier party-scoped purchase records restore with a duplicate-source review and keep new credits unclaimed", async () => {
+  const { itcState, buildItcAction } = await import("../lib/gst-itc.js");
+  await book(async ({store, company, party, input}) => {
+    const other=(await store.saveGstMaster(company.id,"party",{name:"Alternate ledger",gstin:gstin("23","LMNOP1234Q"),kind:"supplier",stateCode:"23",address:"Synthetic address"})).party;
+    const base={...input,type:"Purchase",supplierInvoiceNumber:"LEGACY/7"};
+    const first=(await store.passGstInvoice(company.id,{...base,number:"OLD-1"})).invoice;
+    await store.passGstInvoice(company.id,{...base,number:"OLD-2",partyId:other.id});
+    const historic=structuredClone(await store.snapshot(company.id));
+    historic.company.gst.parties.find(p=>p.id===other.id).gstin=party.gstin;
+    for (const v of historic.vouchers) { delete v.gst.purchaseIdentityVersion; v.gst.party.gstin=party.gstin; }
+    const restored=validateTransfer(historic);
+    const issueIds=itcState(restored.company,restored.vouchers,"2026-07-31").issues.filter(i=>i.code==="duplicate-supplier-document").map(i=>i.invoiceId);
+    assert.equal(issueIds.length,2);
+    assert.throws(()=>buildItcAction(restored.company,restored.vouchers,"claim",{invoiceId:first.id,date:"2026-07-31",requestId:"legacy-claim-review-0001"}),/multiple historical entries/);
+    assert.throws(()=>buildGstInvoice(restored.company,restored.vouchers,{...base,number:"NEW-3"}),/supplier document is already/);
+    historic.vouchers[1].gst.purchaseIdentityVersion=2;
+    assert.throws(()=>validateTransfer(historic),/supplier document is already/);
+  });
+});
+
+
+test("a later-posted original purchase remains selectable when reviewing its earlier-booked supplier credit note", async () => {
+  await book(async ({store, company, input}) => {
+    const source = await store.passGstInvoice(company.id, {...input,type:"Purchase",number:"INTERNAL BILL APRIL 003",date:"2026-04-03",supplierInvoiceNumber:"M-003",supplierInvoiceDate:"2026-03-28"});
+    const note={...input,type:"Credit Note",direction:"purchase",number:"NOTE 100",date:"2026-04-01",stockEffect:"none",originalInvoiceId:source.invoice.id,supplierInvoiceNumber:"C-2",supplierInvoiceDate:"2026-03-31"};
+    await assert.rejects(store.passGstInvoice(company.id,{...note,supplierInvoiceDate:"2026-03-27"}),/original invoice date/);
+    const saved=await store.passGstInvoice(company.id,note);
+    const review=await store.gstItcAction(company.id,"credit-note",{invoiceId:saved.invoice.id,date:"2026-04-10",requestId:"cross-period-credit-0001",reference:"Synthetic return of goods",evidence:{basis:"Credit note applied to the original supplier bill",documentReference:"C-2"}});
+    assert.equal(review.record.components.cgstPaise,900);
+    assert.equal(review.record.components.sgstPaise,900);
+    assert.deepEqual(review.record.returnRows,[]);
+    const restored=await store.snapshot(company.id);
+    assert.deepEqual(validateTransfer(restored).vouchers,restored.vouchers);
+  });
+});
