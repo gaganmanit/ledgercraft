@@ -1,0 +1,39 @@
+.tally-gst-review { margin-top: 2rem; border-top: 1px solid var(--line-strong); padding-top: 1rem; }
+.tally-gst-review h2 { font: 500 1.5rem var(--serif); }
+.tally-gst-review > p { font-size: .85rem; }
+.tally-gst-review summary { cursor: pointer; min-height: 44px; padding: .65rem 0; }
+.tally-gst-invoice { border-block-end: 1px solid var(--line-strong); padding: .5rem 0; }
+.tally-gst-invoice > summary { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; font-size: .9rem; }
+.tally-gst-invoice > summary::before { content: "+"; font-family: var(--mono); }
+.tally-gst-invoice[open] > summary::before { content: "−"; }
+.tally-gst-invoice > summary span:first-of-type { flex: 1; }
+.tally-gst-invoice p, .tally-gst-invoice label, .tally-gst-invoice li { font-size: .85rem; }
+.tally-gst-invoice h3 { margin-block: 1.5rem .5rem; }
+.tally-gst-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1rem; margin-block: 1rem; }
+.tally-gst-grid label, .tally-gst-item label { display: grid; gap: .35rem; min-width: 0; }
+.tally-gst-review select, .tally-gst-review input { min-height: 44px; min-width: 0; max-width: 100%; }
+.tally-gst-item { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 1rem; padding: .7rem 0; border-bottom: 1px solid var(--line); }
+.tally-gst-selection { display: flex; gap: .5rem; align-items: center; }
+.tally-gst-selection input { width: 1.2rem; }
+.tally-gst-original pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 28rem; overflow: auto; font-size: .75rem; }
+.tally-gst-problems { padding-inline-start: 1.2rem; }
+.tally-gst-review [data-tally-gst-message]:empty, .tally-gst-review [data-tally-gst-row-message]:empty { display: none; }
+@media (max-width: 680px) { .tally-gst-grid, .tally-gst-item { grid-template-columns: 1fr; } .tally-gst-invoice > summary { gap: .3rem; } }
+@media print { .tally-gst-review button, .tally-gst-review form { display: none; } }
+
+.tally-gst-enrichment { margin-block: 1rem; border-block: 1px solid var(--line-strong); padding: .5rem 0; }
+.tally-gst-copy { display: flex; flex-wrap: wrap; gap: .8rem; align-items: end; margin-block: 1rem; }
+.tally-gst-copy label { display: grid; gap: .35rem; flex: 1; min-width: 12rem; }
+.tally-gst-grid textarea { min-height: 5rem; }
+
+.tally-gst-facts { margin-block: 1rem; padding: .5rem 0; border-block: 1px solid var(--line-strong); }
+.tally-gst-fact { display: grid; gap: .3rem; margin-block: .8rem; font-size: .85rem; }
+.tally-gst-fact ul { margin-block: .2rem; padding-inline-start: 1.2rem; overflow-wrap: anywhere; }
+.tally-gst-fact span { color: var(--ink-soft); }
+.tally-gst-facts h4 { margin-block: 1rem .3rem; }
+.tally-gst-facts button { margin-block: .4rem; }
+[data-tally-gst-corrections] label { display: grid; gap: .35rem; margin-block: .8rem; }
+
+.tally-gst-search { display: flex; flex-wrap: wrap; align-items: end; gap: .8rem; margin-block: 1rem; }
+.tally-gst-search label { display: grid; gap: .35rem; flex: 1; min-width: 12rem; }
+.tally-gst-review [data-tally-gst-page] { font-size: .85rem; }

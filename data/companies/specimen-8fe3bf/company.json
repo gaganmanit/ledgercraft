@@ -1,0 +1,324 @@
+{
+  "id": "specimen-8fe3bf",
+  "name": "North Mill Traders",
+  "booksFrom": "2026-04-01",
+  "groups": [
+    {
+      "id": "g-capital",
+      "name": "Capital Account",
+      "parentId": null,
+      "nature": "Liability",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-reserves",
+      "name": "Reserves & Surplus",
+      "parentId": "g-capital",
+      "nature": "Liability",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-current-assets",
+      "name": "Current Assets",
+      "parentId": null,
+      "nature": "Asset",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-bank",
+      "name": "Bank Accounts",
+      "parentId": "g-current-assets",
+      "nature": "Asset",
+      "gross": false,
+      "cashBank": true,
+      "reserved": true
+    },
+    {
+      "id": "g-cash",
+      "name": "Cash-in-Hand",
+      "parentId": "g-current-assets",
+      "nature": "Asset",
+      "gross": false,
+      "cashBank": true,
+      "reserved": true
+    },
+    {
+      "id": "g-deposits",
+      "name": "Deposits (Asset)",
+      "parentId": "g-current-assets",
+      "nature": "Asset",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-advances",
+      "name": "Loans & Advances (Asset)",
+      "parentId": "g-current-assets",
+      "nature": "Asset",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-stock",
+      "name": "Stock-in-Hand",
+      "parentId": "g-current-assets",
+      "nature": "Asset",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-debtors",
+      "name": "Sundry Debtors",
+      "parentId": "g-current-assets",
+      "nature": "Asset",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-current-liab",
+      "name": "Current Liabilities",
+      "parentId": null,
+      "nature": "Liability",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-duties",
+      "name": "Duties & Taxes",
+      "parentId": "g-current-liab",
+      "nature": "Liability",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-provisions",
+      "name": "Provisions",
+      "parentId": "g-current-liab",
+      "nature": "Liability",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-creditors",
+      "name": "Sundry Creditors",
+      "parentId": "g-current-liab",
+      "nature": "Liability",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-fixed",
+      "name": "Fixed Assets",
+      "parentId": null,
+      "nature": "Asset",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-invest",
+      "name": "Investments",
+      "parentId": null,
+      "nature": "Asset",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-loans",
+      "name": "Loans (Liability)",
+      "parentId": null,
+      "nature": "Liability",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-od",
+      "name": "Bank OD A/c",
+      "parentId": "g-loans",
+      "nature": "Liability",
+      "gross": false,
+      "cashBank": true,
+      "reserved": true
+    },
+    {
+      "id": "g-secured",
+      "name": "Secured Loans",
+      "parentId": "g-loans",
+      "nature": "Liability",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-unsecured",
+      "name": "Unsecured Loans",
+      "parentId": "g-loans",
+      "nature": "Liability",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-branch",
+      "name": "Branch / Divisions",
+      "parentId": null,
+      "nature": "Liability",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-suspense",
+      "name": "Suspense A/c",
+      "parentId": null,
+      "nature": "Liability",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-misc",
+      "name": "Misc. Expenses (ASSET)",
+      "parentId": null,
+      "nature": "Asset",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-sales",
+      "name": "Sales Accounts",
+      "parentId": null,
+      "nature": "Income",
+      "gross": true,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-purchase",
+      "name": "Purchase Accounts",
+      "parentId": null,
+      "nature": "Expense",
+      "gross": true,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-direct-exp",
+      "name": "Direct Expenses",
+      "parentId": null,
+      "nature": "Expense",
+      "gross": true,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-direct-inc",
+      "name": "Direct Incomes",
+      "parentId": null,
+      "nature": "Income",
+      "gross": true,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-indirect-exp",
+      "name": "Indirect Expenses",
+      "parentId": null,
+      "nature": "Expense",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    },
+    {
+      "id": "g-indirect-inc",
+      "name": "Indirect Incomes",
+      "parentId": null,
+      "nature": "Income",
+      "gross": false,
+      "cashBank": false,
+      "reserved": true
+    }
+  ],
+  "ledgers": [
+    {
+      "id": "l-cash",
+      "name": "Cash",
+      "groupId": "g-cash",
+      "opening": {
+        "dc": "Dr",
+        "paise": 18000000
+      }
+    },
+    {
+      "id": "l-bank",
+      "name": "State Bank current",
+      "groupId": "g-bank",
+      "opening": {
+        "dc": "Dr",
+        "paise": 7000000
+      }
+    },
+    {
+      "id": "l-capital",
+      "name": "Proprietor's capital",
+      "groupId": "g-capital",
+      "opening": {
+        "dc": "Cr",
+        "paise": 25000000
+      }
+    },
+    {
+      "id": "l-sales",
+      "name": "Sales — cloth",
+      "groupId": "g-sales",
+      "opening": {
+        "dc": "Cr",
+        "paise": 0
+      }
+    },
+    {
+      "id": "l-purchase",
+      "name": "Purchases — grey cloth",
+      "groupId": "g-purchase",
+      "opening": {
+        "dc": "Dr",
+        "paise": 0
+      }
+    },
+    {
+      "id": "l-rent",
+      "name": "Godown rent",
+      "groupId": "g-indirect-exp",
+      "opening": {
+        "dc": "Dr",
+        "paise": 0
+      }
+    },
+    {
+      "id": "l-mill",
+      "name": "Mill Stores",
+      "groupId": "g-creditors",
+      "opening": {
+        "dc": "Cr",
+        "paise": 0
+      }
+    }
+  ]
+}

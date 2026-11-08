@@ -1,0 +1,29 @@
+.itc-workspace [hidden] { display: none !important; }
+.itc-asof, .itc-section-head { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin: 1rem 0; }
+.itc-asof { justify-content: start; }
+.itc-asof label, .itc-form label { display: grid; gap: .35rem; }
+.itc-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; border-block: 1px solid var(--line-strong); padding-block: 1.2rem; }
+.itc-summary dt { font-size: .85rem; }
+.itc-summary dd { margin: .5rem 0 0; font: 1.5rem var(--mono); font-variant-numeric: tabular-nums; }
+.itc-sub { display: block; font-size: .85rem; margin-top: .35rem; }
+.itc-selected { background: var(--wash); }
+.itc-entry, .itc-history, .itc-sources { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--line-strong); }
+.itc-attention { border-left: 3px solid var(--vermilion); padding-left: 1rem; }
+.itc-attention li { margin: .6rem 0; }
+.itc-form { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.itc-wide { grid-column: 1 / -1; }
+.itc-form fieldset { min-width: 0; padding: 1rem; border: 1px solid var(--line-strong); display: grid; gap: .8rem; }
+.itc-form legend { padding-inline: .35rem; }
+.itc-checks { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem 1.25rem; }
+.itc-check { display: flex !important; align-items: start; gap: .6rem; }
+.itc-check input[type=checkbox] { width: 1.15rem; height: 1.15rem; flex: 0 0 auto; margin-top: .15rem; }
+.itc-scroll { overflow-x: auto; max-width: 100%; }
+.itc-scroll table { width: 100%; }
+.itc-scroll input[inputmode=decimal] { width: 7rem; min-height: 44px; text-align: right; font-family: var(--mono); }
+.itc-history details { border-bottom: 1px solid var(--line); padding: .9rem 0; }
+.itc-history summary, .itc-sources summary { cursor: pointer; line-height: 1.5; }
+.itc-form textarea { resize: vertical; width: 100%; }
+.itc-form input:focus-visible, .itc-form select:focus-visible, .itc-form textarea:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 3px; }
+.itc-history caption { text-align: left; margin-block: .8rem; font-weight: 600; }
+@media (max-width: 760px) { .itc-form, .itc-checks { grid-template-columns: 1fr; } .itc-summary { grid-template-columns: 1fr 1fr; } .itc-section-head { align-items: start; flex-direction: column; } }
+@media print { .itc-entry, .itc-asof, .itc-sources { display: none; } .itc-history details { break-inside: auto; } }

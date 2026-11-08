@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "retrievedAt": "2026-11-08",
+  "sources": [
+    {
+      "url": "https://tutorial.gst.gov.in/offlineutilities/returns/gst_offline_tool.zip",
+      "lastModified": "2026-10-31T18:01:24Z",
+      "bytes": 29217506,
+      "sha256": "f0a7d6f66bf71b30e9ecd045a664dda428c8fac239f51127d656e6faac60e312",
+      "template": "GSTR1_Excel_Workbook_Template_V2.2.xlsx",
+      "templateSHA256": "425084547928a31eab53123b9247bad9ded1ee421fbc9202d009260e5d9b18e5",
+      "worksheets": {
+        "b2ba": {
+          "member": "Section_wise_CSV_files/GSTR1/b2ba.csv",
+          "sha256": "723567ee69ccecc6d81100d6f94930ee243445132c4b00aa6fd3c9cfa5db683f",
+          "headers": [
+            "GSTIN/UIN of Recipient",
+            "Receiver Name",
+            "Original Invoice Number",
+            "Original Invoice date",
+            "Revised Invoice Number",
+            "Revised Invoice date",
+            "Invoice Value",
+            "Place Of Supply",
+            "Reverse Charge",
+            "Applicable % of Tax Rate",
+            "Invoice Type",
+            "E-Commerce GSTIN",
+            "Rate",
+            "Taxable Value",
+            "Cess Amount"
+          ]
+        },
+        "b2cla": {
+          "member": "Section_wise_CSV_files/GSTR1/b2cla.csv",
+          "sha256": "70b8546a394b38c60489ea30abc57ae765808c682eed541504c6ca9e865cbbac",
+          "headers": [
+            "Original Invoice Number",
+            "Original Invoice date",
+            "Original Place Of Supply",
+            "Revised Invoice Number",
+            "Revised Invoice date",
+            "Invoice Value",
+            "Applicable % of Tax Rate",
+            "Rate",
+            "Taxable Value",
+            "Cess Amount",
+            "E-Commerce GSTIN"
+          ]
+        },
+        "cdnra": {
+          "member": "Section_wise_CSV_files/GSTR1/cdnra.csv",
+          "sha256": "ebbd18d6313003403df728f928655bdbc98b3b35d51e2004b7acf583f94c4105",
+          "headers": [
+            "GSTIN/UIN of Recipient",
+            "Receiver Name",
+            "Original Note Number",
+            "Original Note Date",
+            "Revised Note Number",
+            "Revised Note Date",
+            "Note Type",
+            "Place Of Supply",
+            "Reverse Charge",
+            "Note Supply Type",
+            "Note Value",
+            "Applicable % of Tax Rate",
+            "Rate",
+            "Taxable Value",
+            "Cess Amount"
+          ]
+        },
+        "cdnura": {
+          "member": "Section_wise_CSV_files/GSTR1/cdnura.csv",
+          "sha256": "ad3a83a4e821e2af03c306cb7371d4ced66cf8ce4a3b35f90c1c7db1d32af709",
+          "headers": [
+            "UR Type",
+            "Original Note Number",
+            "Original Note Date",
+            "Revised Note Number",
+            "Revised Note Date",
+            "Note Type",
+            "Place Of Supply",
+            "Note Value",
+            "Applicable % of Tax Rate",
+            "Rate",
+            "Taxable Value",
+            "Cess Amount"
+          ]
+        },
+        "expa": {
+          "member": "Section_wise_CSV_files/GSTR1/expa.csv",
+          "sha256": "069c710468d14c8f2c20e3aa39f88c0109ebabc794e1c5b510270c9082f7a8ad",
+          "headers": [
+            "Export Type",
+            "Original Invoice Number",
+            "Original Invoice date",
+            "Revised Invoice Number",
+            "Revised Invoice date",
+            "Invoice Value",
+            "Port Code",
+            "Shipping Bill Number",
+            "Shipping Bill Date",
+            "Rate",
+            "Taxable Value",
+            "Cess Amount"
+          ]
+        }
+      }
+    },
+    {
+      "url": "https://tutorial.gst.gov.in/downloads/invoiceuploadofflineutility.pdf",
+      "sections": [
+        "2.2 B2BA",
+        "2.4 B2CLA",
+        "2.8 CDNRA",
+        "2.10 CDNURA",
+        "2.12 EXPA"
+      ],
+      "dateFormat": "dd-mmm-yyyy; examples in the CSV archive use dd-mmm-yy; exports use four-digit years and typed Excel dates",
+      "identityRules": [
+        "B2BA recipient GSTIN not amendable",
+        "B2CLA original place of supply not amendable",
+        "EXPA export type not amendable"
+      ]
+    },
+    {
+      "url": "https://tutorial.gst.gov.in/downloads/news/updated_advisory_hsn_table12_25042025.pdf",
+      "purpose": "HSN B2B/B2C validation uses amendment differentials"
+    }
+  ],
+  "urTypes": [
+    "B2CL",
+    "EXPWP",
+    "EXPWOP"
+  ],
+  "supportedSections": [
+    "9A/b2ba",
+    "9A/b2cla",
+    "9A/expa",
+    "9C/cdnra",
+    "9C/cdnura"
+  ]
+}

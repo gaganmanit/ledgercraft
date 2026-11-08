@@ -1,0 +1,59 @@
+[
+  {
+    "id": "v-specimen-receipt",
+    "type": "Receipt",
+    "date": "2026-04-06",
+    "number": "RCT-1",
+    "narration": "Cash sales, counter",
+    "lines": [
+      {
+        "ledgerId": "l-cash",
+        "dc": "Dr",
+        "paise": 2500000
+      },
+      {
+        "ledgerId": "l-sales",
+        "dc": "Cr",
+        "paise": 2500000
+      }
+    ]
+  },
+  {
+    "id": "v-specimen-payment",
+    "type": "Payment",
+    "date": "2026-04-08",
+    "number": "PMT-1",
+    "narration": "April godown rent",
+    "lines": [
+      {
+        "ledgerId": "l-rent",
+        "dc": "Dr",
+        "paise": 800000
+      },
+      {
+        "ledgerId": "l-cash",
+        "dc": "Cr",
+        "paise": 800000
+      }
+    ]
+  },
+  {
+    "id": "v-specimen-purchase",
+    "type": "Purchase",
+    "date": "2026-04-12",
+    "number": "PUR-1",
+    "narration": "Grey cloth, Mill Stores bill 44",
+    "lines": [
+      {
+        "ledgerId": "l-purchase",
+        "dc": "Dr",
+        "paise": 1500000
+      },
+      {
+        "ledgerId": "l-mill",
+        "dc": "Cr",
+        "paise": 1500000
+      }
+    ]
+  }
+]

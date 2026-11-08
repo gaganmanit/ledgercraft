@@ -1,0 +1,2014 @@
+{
+  "version": 1,
+  "source": {
+    "url": "https://tutorial.gst.gov.in/offlineutilities/returns/gst_offline_tool.zip",
+    "retrievedAt": "2026-11-08",
+    "lastModified": "2026-10-31",
+    "filename": "GSTR1_Excel_Workbook_Template_V2.2.xlsx",
+    "sha256": "425084547928a31eab53123b9247bad9ded1ee421fbc9202d009260e5d9b18e5"
+  },
+  "sheets": [
+    {
+      "name": "Help Instruction",
+      "path": "xl/worksheets/sheet1.xml",
+      "state": "visible",
+      "headers": [],
+      "dataStyles": {},
+      "summaryStyles": {},
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "b2b,sez,de",
+      "path": "xl/worksheets/sheet2.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "GSTIN/UIN of Recipient"
+        },
+        {
+          "column": "B",
+          "label": "Receiver Name"
+        },
+        {
+          "column": "C",
+          "label": "Invoice Number"
+        },
+        {
+          "column": "D",
+          "label": "Invoice date"
+        },
+        {
+          "column": "E",
+          "label": "Invoice Value"
+        },
+        {
+          "column": "F",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "G",
+          "label": "Reverse Charge"
+        },
+        {
+          "column": "H",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "I",
+          "label": "Invoice Type"
+        },
+        {
+          "column": "J",
+          "label": "E-Commerce GSTIN"
+        },
+        {
+          "column": "K",
+          "label": "Rate"
+        },
+        {
+          "column": "L",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "M",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "A": "18",
+        "B": "18",
+        "C": "18",
+        "D": "24",
+        "E": "38",
+        "F": "20",
+        "G": "21",
+        "H": "69",
+        "I": "22",
+        "J": "18",
+        "K": "37",
+        "L": "37",
+        "M": "37"
+      },
+      "summaryStyles": {
+        "A": "59",
+        "B": "59",
+        "C": "59",
+        "D": "59",
+        "E": "62",
+        "F": "64",
+        "G": "59",
+        "H": "59",
+        "I": "64",
+        "J": "107",
+        "K": "61",
+        "L": "61",
+        "M": "61"
+      },
+      "dataRowAttributes": {
+        "s": "19",
+        "customFormat": "1",
+        "ht": "14"
+      }
+    },
+    {
+      "name": "b2ba",
+      "path": "xl/worksheets/sheet3.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "GSTIN/UIN of Recipient"
+        },
+        {
+          "column": "B",
+          "label": "Receiver Name"
+        },
+        {
+          "column": "C",
+          "label": "Original Invoice Number"
+        },
+        {
+          "column": "D",
+          "label": "Original Invoice date"
+        },
+        {
+          "column": "E",
+          "label": "Revised Invoice Number"
+        },
+        {
+          "column": "F",
+          "label": "Revised Invoice date"
+        },
+        {
+          "column": "G",
+          "label": "Invoice Value"
+        },
+        {
+          "column": "H",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "I",
+          "label": "Reverse Charge"
+        },
+        {
+          "column": "J",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "K",
+          "label": "Invoice Type"
+        },
+        {
+          "column": "L",
+          "label": "E-Commerce GSTIN"
+        },
+        {
+          "column": "M",
+          "label": "Rate"
+        },
+        {
+          "column": "N",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "O",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "A": "18",
+        "B": "18",
+        "C": "67",
+        "D": "24",
+        "E": "24",
+        "F": "24",
+        "G": "38",
+        "H": "20",
+        "I": "21",
+        "J": "69",
+        "K": "22",
+        "L": "67",
+        "M": "37",
+        "N": "37",
+        "O": "37"
+      },
+      "summaryStyles": {
+        "A": "59",
+        "B": "59",
+        "C": "59",
+        "D": "59",
+        "E": "59",
+        "F": "59",
+        "G": "62",
+        "H": "64",
+        "I": "59",
+        "J": "59",
+        "K": "64",
+        "L": "107",
+        "M": "61",
+        "N": "61",
+        "O": "61"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "b2cl",
+      "path": "xl/worksheets/sheet4.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Invoice Number"
+        },
+        {
+          "column": "B",
+          "label": "Invoice date"
+        },
+        {
+          "column": "C",
+          "label": "Invoice Value"
+        },
+        {
+          "column": "D",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "E",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "F",
+          "label": "Rate"
+        },
+        {
+          "column": "G",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "H",
+          "label": "Cess Amount"
+        },
+        {
+          "column": "I",
+          "label": "E-Commerce GSTIN"
+        }
+      ],
+      "dataStyles": {
+        "A": "67",
+        "B": "24",
+        "C": "38",
+        "D": "20",
+        "E": "69",
+        "F": "37",
+        "G": "38",
+        "H": "40",
+        "I": "18"
+      },
+      "summaryStyles": {
+        "A": "59",
+        "B": "59",
+        "C": "62",
+        "D": "83",
+        "E": "59",
+        "F": "61",
+        "G": "61",
+        "H": "63",
+        "I": "64"
+      },
+      "dataRowAttributes": {
+        "s": "19",
+        "customFormat": "1",
+        "ht": "14"
+      }
+    },
+    {
+      "name": "b2cla",
+      "path": "xl/worksheets/sheet5.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Original Invoice Number"
+        },
+        {
+          "column": "B",
+          "label": "Original Invoice date"
+        },
+        {
+          "column": "C",
+          "label": "Original Place Of Supply"
+        },
+        {
+          "column": "D",
+          "label": "Revised Invoice Number"
+        },
+        {
+          "column": "E",
+          "label": "Revised Invoice date"
+        },
+        {
+          "column": "F",
+          "label": "Invoice Value"
+        },
+        {
+          "column": "G",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "H",
+          "label": "Rate"
+        },
+        {
+          "column": "I",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "J",
+          "label": "Cess Amount"
+        },
+        {
+          "column": "K",
+          "label": "E-Commerce GSTIN"
+        }
+      ],
+      "dataStyles": {},
+      "summaryStyles": {
+        "A": "59",
+        "B": "59",
+        "C": "98",
+        "D": "59",
+        "E": "59",
+        "F": "62",
+        "G": "59",
+        "H": "61",
+        "I": "61",
+        "J": "63",
+        "K": "64"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "b2cs",
+      "path": "xl/worksheets/sheet6.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Type"
+        },
+        {
+          "column": "B",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "C",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "D",
+          "label": "Rate"
+        },
+        {
+          "column": "E",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "F",
+          "label": "Cess Amount"
+        },
+        {
+          "column": "G",
+          "label": "E-Commerce GSTIN"
+        }
+      ],
+      "dataStyles": {
+        "A": "26",
+        "B": "20",
+        "C": "69",
+        "D": "37",
+        "E": "37",
+        "F": "37",
+        "G": "18",
+        "H": "25"
+      },
+      "summaryStyles": {
+        "A": "83",
+        "B": "83",
+        "C": "59",
+        "D": "61",
+        "E": "61",
+        "F": "61",
+        "G": "83",
+        "H": "25"
+      },
+      "dataRowAttributes": {
+        "s": "19",
+        "customFormat": "1",
+        "ht": "14"
+      }
+    },
+    {
+      "name": "b2csa",
+      "path": "xl/worksheets/sheet7.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Financial Year"
+        },
+        {
+          "column": "B",
+          "label": "Original Month"
+        },
+        {
+          "column": "C",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "D",
+          "label": "Type"
+        },
+        {
+          "column": "E",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "F",
+          "label": "Rate"
+        },
+        {
+          "column": "G",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "H",
+          "label": "Cess Amount"
+        },
+        {
+          "column": "I",
+          "label": "E-Commerce GSTIN"
+        }
+      ],
+      "dataStyles": {
+        "C": "20",
+        "D": "26",
+        "E": "69",
+        "F": "37",
+        "G": "37",
+        "H": "37",
+        "I": "18"
+      },
+      "summaryStyles": {
+        "A": "83",
+        "B": "83",
+        "C": "83",
+        "D": "83",
+        "E": "59",
+        "F": "83",
+        "G": "61",
+        "H": "61",
+        "I": "83"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "cdnr",
+      "path": "xl/worksheets/sheet8.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "GSTIN/UIN of Recipient"
+        },
+        {
+          "column": "B",
+          "label": "Receiver Name"
+        },
+        {
+          "column": "C",
+          "label": "Note Number"
+        },
+        {
+          "column": "D",
+          "label": "Note Date"
+        },
+        {
+          "column": "E",
+          "label": "Note Type"
+        },
+        {
+          "column": "F",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "G",
+          "label": "Reverse Charge"
+        },
+        {
+          "column": "H",
+          "label": "Note Supply Type"
+        },
+        {
+          "column": "I",
+          "label": "Note Value"
+        },
+        {
+          "column": "J",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "K",
+          "label": "Rate"
+        },
+        {
+          "column": "L",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "M",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "A": "102",
+        "B": "102",
+        "C": "102",
+        "D": "216",
+        "E": "167",
+        "F": "218",
+        "G": "21",
+        "H": "22",
+        "I": "38",
+        "J": "102",
+        "K": "102",
+        "L": "38",
+        "M": "38"
+      },
+      "summaryStyles": {
+        "A": "59",
+        "B": "59",
+        "C": "59",
+        "D": "59",
+        "E": "83",
+        "F": "83",
+        "G": "59",
+        "H": "64",
+        "I": "60",
+        "J": "59",
+        "K": "61",
+        "L": "61",
+        "M": "61"
+      },
+      "dataRowAttributes": {
+        "s": "19",
+        "customFormat": "1"
+      }
+    },
+    {
+      "name": "cdnra",
+      "path": "xl/worksheets/sheet9.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "GSTIN/UIN of Recipient"
+        },
+        {
+          "column": "B",
+          "label": "Receiver Name"
+        },
+        {
+          "column": "C",
+          "label": "Original Note Number"
+        },
+        {
+          "column": "D",
+          "label": "Original Note Date"
+        },
+        {
+          "column": "E",
+          "label": "Revised Note Number"
+        },
+        {
+          "column": "F",
+          "label": "Revised Note Date"
+        },
+        {
+          "column": "G",
+          "label": "Note Type"
+        },
+        {
+          "column": "H",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "I",
+          "label": "Reverse Charge"
+        },
+        {
+          "column": "J",
+          "label": "Note Supply Type"
+        },
+        {
+          "column": "K",
+          "label": "Note Value"
+        },
+        {
+          "column": "L",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "M",
+          "label": "Rate"
+        },
+        {
+          "column": "N",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "O",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "B": "18",
+        "D": "24",
+        "F": "24",
+        "G": "28",
+        "I": "21",
+        "J": "22",
+        "K": "37",
+        "L": "68",
+        "M": "37",
+        "N": "37",
+        "O": "37"
+      },
+      "summaryStyles": {
+        "A": "59",
+        "B": "59",
+        "C": "64",
+        "D": "59",
+        "E": "59",
+        "F": "59",
+        "G": "83",
+        "H": "83",
+        "I": "59",
+        "J": "64",
+        "K": "60",
+        "L": "59",
+        "M": "61",
+        "N": "61",
+        "O": "61"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "cdnur",
+      "path": "xl/worksheets/sheet10.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "UR Type"
+        },
+        {
+          "column": "B",
+          "label": "Note Number"
+        },
+        {
+          "column": "C",
+          "label": "Note Date"
+        },
+        {
+          "column": "D",
+          "label": "Note Type"
+        },
+        {
+          "column": "E",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "F",
+          "label": "Note Value"
+        },
+        {
+          "column": "G",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "H",
+          "label": "Rate"
+        },
+        {
+          "column": "I",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "J",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "A": "28",
+        "B": "18",
+        "C": "24",
+        "D": "28",
+        "E": "20",
+        "F": "37",
+        "G": "68",
+        "H": "37",
+        "I": "37",
+        "J": "37"
+      },
+      "summaryStyles": {
+        "A": "83",
+        "B": "59",
+        "C": "59",
+        "D": "83",
+        "E": "83",
+        "F": "60",
+        "G": "59",
+        "H": "98",
+        "I": "61",
+        "J": "61"
+      },
+      "dataRowAttributes": {
+        "s": "19",
+        "customFormat": "1",
+        "ht": "14"
+      }
+    },
+    {
+      "name": "cdnura",
+      "path": "xl/worksheets/sheet11.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "UR Type"
+        },
+        {
+          "column": "B",
+          "label": "Original Note Number"
+        },
+        {
+          "column": "C",
+          "label": "Original Note Date"
+        },
+        {
+          "column": "D",
+          "label": "Revised Note Number"
+        },
+        {
+          "column": "E",
+          "label": "Revised Note Date"
+        },
+        {
+          "column": "F",
+          "label": "Note Type"
+        },
+        {
+          "column": "G",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "H",
+          "label": "Note Value"
+        },
+        {
+          "column": "I",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "J",
+          "label": "Rate"
+        },
+        {
+          "column": "K",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "L",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "A": "28",
+        "C": "24",
+        "E": "24",
+        "F": "28",
+        "G": "163",
+        "I": "68",
+        "J": "37"
+      },
+      "summaryStyles": {
+        "A": "83",
+        "B": "59",
+        "C": "59",
+        "D": "59",
+        "E": "59",
+        "F": "83",
+        "G": "83",
+        "H": "60",
+        "I": "59",
+        "J": "98",
+        "K": "61",
+        "L": "61"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "exp",
+      "path": "xl/worksheets/sheet12.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Export Type"
+        },
+        {
+          "column": "B",
+          "label": "Invoice Number"
+        },
+        {
+          "column": "C",
+          "label": "Invoice date"
+        },
+        {
+          "column": "D",
+          "label": "Invoice Value"
+        },
+        {
+          "column": "E",
+          "label": "Port Code"
+        },
+        {
+          "column": "F",
+          "label": "Shipping Bill Number"
+        },
+        {
+          "column": "G",
+          "label": "Shipping Bill Date"
+        },
+        {
+          "column": "H",
+          "label": "Rate"
+        },
+        {
+          "column": "I",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "J",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "B": "67",
+        "C": "23",
+        "D": "37",
+        "E": "69",
+        "F": "70",
+        "G": "23",
+        "H": "37",
+        "I": "37",
+        "J": "37"
+      },
+      "summaryStyles": {
+        "A": "83",
+        "B": "59",
+        "C": "83",
+        "D": "60",
+        "E": "83",
+        "F": "59",
+        "G": "83",
+        "H": "61",
+        "I": "61",
+        "J": "61"
+      },
+      "dataRowAttributes": {
+        "s": "19",
+        "customFormat": "1",
+        "ht": "14"
+      }
+    },
+    {
+      "name": "expa",
+      "path": "xl/worksheets/sheet13.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Export Type"
+        },
+        {
+          "column": "B",
+          "label": "Original Invoice Number"
+        },
+        {
+          "column": "C",
+          "label": "Original Invoice date"
+        },
+        {
+          "column": "D",
+          "label": "Revised Invoice Number"
+        },
+        {
+          "column": "E",
+          "label": "Revised Invoice date"
+        },
+        {
+          "column": "F",
+          "label": "Invoice Value"
+        },
+        {
+          "column": "G",
+          "label": "Port Code"
+        },
+        {
+          "column": "H",
+          "label": "Shipping Bill Number"
+        },
+        {
+          "column": "I",
+          "label": "Shipping Bill Date"
+        },
+        {
+          "column": "J",
+          "label": "Rate"
+        },
+        {
+          "column": "K",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "L",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "A": "19",
+        "C": "23",
+        "E": "23",
+        "F": "37",
+        "I": "23",
+        "J": "37"
+      },
+      "summaryStyles": {
+        "A": "83",
+        "B": "59",
+        "C": "83",
+        "D": "83",
+        "E": "83",
+        "F": "60",
+        "G": "83",
+        "H": "59",
+        "I": "83",
+        "J": "61",
+        "K": "61",
+        "L": "61"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "at",
+      "path": "xl/worksheets/sheet14.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "B",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "C",
+          "label": "Rate"
+        },
+        {
+          "column": "D",
+          "label": "Gross Advance Received"
+        },
+        {
+          "column": "E",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "A": "20",
+        "B": "69",
+        "C": "37",
+        "D": "38",
+        "E": "37"
+      },
+      "summaryStyles": {
+        "A": "59",
+        "B": "59",
+        "C": "61",
+        "D": "61",
+        "E": "61"
+      },
+      "dataRowAttributes": {
+        "s": "19",
+        "customFormat": "1",
+        "ht": "14"
+      }
+    },
+    {
+      "name": "ata",
+      "path": "xl/worksheets/sheet15.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Financial Year"
+        },
+        {
+          "column": "B",
+          "label": "Original Month"
+        },
+        {
+          "column": "C",
+          "label": "Original Place Of Supply"
+        },
+        {
+          "column": "D",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "E",
+          "label": "Rate"
+        },
+        {
+          "column": "F",
+          "label": "Gross Advance Received"
+        },
+        {
+          "column": "G",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "C": "20",
+        "D": "69",
+        "E": "37"
+      },
+      "summaryStyles": {
+        "A": "59",
+        "B": "59",
+        "C": "59",
+        "D": "59",
+        "E": "61",
+        "F": "61",
+        "G": "61"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "atadj",
+      "path": "xl/worksheets/sheet16.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "B",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "C",
+          "label": "Rate"
+        },
+        {
+          "column": "D",
+          "label": "Gross Advance Adjusted"
+        },
+        {
+          "column": "E",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "A": "20",
+        "B": "69",
+        "C": "37",
+        "D": "38",
+        "E": "37"
+      },
+      "summaryStyles": {
+        "A": "59",
+        "B": "59",
+        "C": "61",
+        "D": "61",
+        "E": "61"
+      },
+      "dataRowAttributes": {
+        "s": "19",
+        "customFormat": "1",
+        "ht": "14"
+      }
+    },
+    {
+      "name": "atadja",
+      "path": "xl/worksheets/sheet17.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Financial Year"
+        },
+        {
+          "column": "B",
+          "label": "Original Month"
+        },
+        {
+          "column": "C",
+          "label": "Original Place Of Supply"
+        },
+        {
+          "column": "D",
+          "label": "Applicable % of Tax Rate"
+        },
+        {
+          "column": "E",
+          "label": "Rate"
+        },
+        {
+          "column": "F",
+          "label": "Gross Advance Adjusted"
+        },
+        {
+          "column": "G",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "C": "20",
+        "D": "69",
+        "E": "37",
+        "F": "38",
+        "G": "37"
+      },
+      "summaryStyles": {
+        "A": "59",
+        "B": "59",
+        "C": "59",
+        "D": "59",
+        "E": "61",
+        "F": "61",
+        "G": "61"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "exemp",
+      "path": "xl/worksheets/sheet18.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Description"
+        },
+        {
+          "column": "B",
+          "label": "Nil Rated Supplies"
+        },
+        {
+          "column": "C",
+          "label": "Exempted(other than nil rated/non GST supply)"
+        },
+        {
+          "column": "D",
+          "label": "Non-GST Supplies"
+        }
+      ],
+      "dataStyles": {
+        "B": "38",
+        "C": "38",
+        "D": "38"
+      },
+      "summaryStyles": {
+        "A": "59",
+        "B": "61",
+        "C": "61",
+        "D": "61"
+      },
+      "dataRowAttributes": {
+        "s": "19",
+        "customFormat": "1",
+        "ht": "14"
+      }
+    },
+    {
+      "name": "hsn(b2b)",
+      "path": "xl/worksheets/sheet19.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "HSN"
+        },
+        {
+          "column": "B",
+          "label": "Description"
+        },
+        {
+          "column": "C",
+          "label": "UQC"
+        },
+        {
+          "column": "D",
+          "label": "Total Quantity"
+        },
+        {
+          "column": "E",
+          "label": "Total Value"
+        },
+        {
+          "column": "F",
+          "label": "Rate"
+        },
+        {
+          "column": "G",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "H",
+          "label": "Integrated Tax Amount"
+        },
+        {
+          "column": "I",
+          "label": "Central Tax Amount"
+        },
+        {
+          "column": "J",
+          "label": "State/UT Tax Amount"
+        },
+        {
+          "column": "K",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "A": "69",
+        "B": "18",
+        "D": "38",
+        "E": "38",
+        "F": "38",
+        "G": "38",
+        "H": "38",
+        "I": "38",
+        "J": "38",
+        "K": "38"
+      },
+      "summaryStyles": {
+        "A": "172",
+        "B": "31",
+        "C": "32",
+        "D": "65",
+        "E": "65",
+        "F": "65",
+        "G": "65",
+        "H": "65",
+        "I": "65",
+        "J": "65",
+        "K": "66"
+      },
+      "dataRowAttributes": {
+        "s": "19",
+        "customFormat": "1",
+        "ht": "14"
+      }
+    },
+    {
+      "name": "hsn(b2c)",
+      "path": "xl/worksheets/sheet20.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "HSN"
+        },
+        {
+          "column": "B",
+          "label": "Description"
+        },
+        {
+          "column": "C",
+          "label": "UQC"
+        },
+        {
+          "column": "D",
+          "label": "Total Quantity"
+        },
+        {
+          "column": "E",
+          "label": "Total Value"
+        },
+        {
+          "column": "F",
+          "label": "Rate"
+        },
+        {
+          "column": "G",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "H",
+          "label": "Integrated Tax Amount"
+        },
+        {
+          "column": "I",
+          "label": "Central Tax Amount"
+        },
+        {
+          "column": "J",
+          "label": "State/UT Tax Amount"
+        },
+        {
+          "column": "K",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "A": "69",
+        "B": "18",
+        "D": "38",
+        "E": "38",
+        "F": "38",
+        "G": "38",
+        "H": "38",
+        "I": "38",
+        "J": "38",
+        "K": "38"
+      },
+      "summaryStyles": {
+        "A": "172",
+        "B": "31",
+        "C": "32",
+        "D": "65",
+        "E": "65",
+        "F": "65",
+        "G": "65",
+        "H": "65",
+        "I": "65",
+        "J": "65",
+        "K": "66"
+      },
+      "dataRowAttributes": {
+        "s": "19",
+        "customFormat": "1",
+        "ht": "14"
+      }
+    },
+    {
+      "name": "docs",
+      "path": "xl/worksheets/sheet21.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Nature of Document"
+        },
+        {
+          "column": "B",
+          "label": "Sr. No. From"
+        },
+        {
+          "column": "C",
+          "label": "Sr. No. To"
+        },
+        {
+          "column": "D",
+          "label": "Total Number"
+        },
+        {
+          "column": "E",
+          "label": "Cancelled"
+        }
+      ],
+      "dataStyles": {
+        "A": "18",
+        "B": "18",
+        "D": "50",
+        "E": "103"
+      },
+      "summaryStyles": {
+        "A": "64",
+        "B": "64",
+        "C": "83",
+        "D": "121",
+        "E": "121"
+      },
+      "dataRowAttributes": {
+        "s": "19",
+        "customFormat": "1",
+        "ht": "14"
+      }
+    },
+    {
+      "name": "eco",
+      "path": "xl/worksheets/sheet22.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Nature of Supply"
+        },
+        {
+          "column": "B",
+          "label": "GSTIN of E-Commerce Operator"
+        },
+        {
+          "column": "C",
+          "label": "E-Commerce Operator Name"
+        },
+        {
+          "column": "D",
+          "label": "Net value of supplies"
+        },
+        {
+          "column": "E",
+          "label": "Integrated tax"
+        },
+        {
+          "column": "F",
+          "label": "Central tax"
+        },
+        {
+          "column": "G",
+          "label": "State/UT tax"
+        },
+        {
+          "column": "H",
+          "label": "Cess"
+        }
+      ],
+      "dataStyles": {
+        "C": "215"
+      },
+      "summaryStyles": {
+        "B": "59",
+        "C": "238",
+        "D": "233",
+        "E": "233",
+        "F": "233",
+        "G": "233",
+        "H": "233"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "ecoa",
+      "path": "xl/worksheets/sheet23.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Nature of Supply"
+        },
+        {
+          "column": "B",
+          "label": "Financial Year"
+        },
+        {
+          "column": "C",
+          "label": "Original Month/Quarter"
+        },
+        {
+          "column": "D",
+          "label": "Original GSTIN of E-Commerce Operator"
+        },
+        {
+          "column": "E",
+          "label": "Revised GSTIN of E-Commerce Operator"
+        },
+        {
+          "column": "F",
+          "label": "E-Commerce Operator Name"
+        },
+        {
+          "column": "G",
+          "label": "Revised Net value of supplies"
+        },
+        {
+          "column": "H",
+          "label": "Integrated tax"
+        },
+        {
+          "column": "I",
+          "label": "Central tax"
+        },
+        {
+          "column": "J",
+          "label": "State/UT tax"
+        },
+        {
+          "column": "K",
+          "label": "Cess"
+        }
+      ],
+      "dataStyles": {
+        "F": "215"
+      },
+      "summaryStyles": {
+        "A": "230",
+        "B": "231",
+        "C": "232",
+        "D": "59",
+        "E": "231",
+        "F": "232",
+        "G": "233",
+        "H": "233",
+        "I": "233",
+        "J": "233",
+        "K": "233"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "ecob2b",
+      "path": "xl/worksheets/sheet24.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Supplier GSTIN/UIN"
+        },
+        {
+          "column": "B",
+          "label": "Supplier Name"
+        },
+        {
+          "column": "C",
+          "label": "Recipient GSTIN/UIN"
+        },
+        {
+          "column": "D",
+          "label": "Recipient Name"
+        },
+        {
+          "column": "E",
+          "label": "Document Number"
+        },
+        {
+          "column": "F",
+          "label": "Document Date"
+        },
+        {
+          "column": "G",
+          "label": "Value of supplies made"
+        },
+        {
+          "column": "H",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "I",
+          "label": "Document type"
+        },
+        {
+          "column": "J",
+          "label": "Rate"
+        },
+        {
+          "column": "K",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "L",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "C": "102",
+        "F": "201"
+      },
+      "summaryStyles": {
+        "A": "59",
+        "B": "211",
+        "C": "59",
+        "D": "211",
+        "E": "59",
+        "F": "211",
+        "G": "212",
+        "H": "211",
+        "I": "211",
+        "J": "211",
+        "K": "212",
+        "L": "212"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "ecourp2b",
+      "path": "xl/worksheets/sheet25.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Recipient GSTIN/UIN"
+        },
+        {
+          "column": "B",
+          "label": "Recipient Name"
+        },
+        {
+          "column": "C",
+          "label": "Document Number"
+        },
+        {
+          "column": "D",
+          "label": "Document Date"
+        },
+        {
+          "column": "E",
+          "label": "Value of supplies made"
+        },
+        {
+          "column": "F",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "G",
+          "label": "Document type"
+        },
+        {
+          "column": "H",
+          "label": "Rate"
+        },
+        {
+          "column": "I",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "J",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {},
+      "summaryStyles": {
+        "A": "59",
+        "B": "211",
+        "C": "59",
+        "D": "211",
+        "E": "212",
+        "F": "211",
+        "G": "211",
+        "H": "211",
+        "I": "212",
+        "J": "212"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "ecob2c",
+      "path": "xl/worksheets/sheet26.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Supplier GSTIN/UIN"
+        },
+        {
+          "column": "B",
+          "label": "Supplier Name"
+        },
+        {
+          "column": "C",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "D",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "E",
+          "label": "Rate"
+        },
+        {
+          "column": "F",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {},
+      "summaryStyles": {
+        "A": "59",
+        "B": "211",
+        "C": "211",
+        "D": "212",
+        "E": "211",
+        "F": "212"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "ecourp2c",
+      "path": "xl/worksheets/sheet27.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "B",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "C",
+          "label": "Rate"
+        },
+        {
+          "column": "D",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {},
+      "summaryStyles": {
+        "A": "195",
+        "B": "196",
+        "C": "195",
+        "D": "196"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "ecoab2b",
+      "path": "xl/worksheets/sheet28.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Supplier GSTIN/UIN"
+        },
+        {
+          "column": "B",
+          "label": "Supplier Name"
+        },
+        {
+          "column": "C",
+          "label": "Recipient GSTIN/UIN"
+        },
+        {
+          "column": "D",
+          "label": "Recipient Name"
+        },
+        {
+          "column": "E",
+          "label": "Original Document Number"
+        },
+        {
+          "column": "F",
+          "label": "Original Document Date"
+        },
+        {
+          "column": "G",
+          "label": "Revised Document Number"
+        },
+        {
+          "column": "H",
+          "label": "Revised Document Date"
+        },
+        {
+          "column": "I",
+          "label": "Value of supplies made"
+        },
+        {
+          "column": "J",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "K",
+          "label": "Document type"
+        },
+        {
+          "column": "L",
+          "label": "Rate"
+        },
+        {
+          "column": "M",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "N",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "B": "200",
+        "C": "240",
+        "D": "200",
+        "E": "200",
+        "F": "201",
+        "G": "200",
+        "H": "201"
+      },
+      "summaryStyles": {
+        "A": "59",
+        "B": "195",
+        "C": "59",
+        "D": "195",
+        "E": "59",
+        "F": "195",
+        "G": "195",
+        "H": "195",
+        "I": "196",
+        "J": "195",
+        "K": "195",
+        "L": "197",
+        "M": "196",
+        "N": "196"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "ecoab2c",
+      "path": "xl/worksheets/sheet29.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Financial Year"
+        },
+        {
+          "column": "B",
+          "label": "Original Month"
+        },
+        {
+          "column": "C",
+          "label": "Supplier GSTIN/UIN"
+        },
+        {
+          "column": "D",
+          "label": "Supplier Name"
+        },
+        {
+          "column": "E",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "F",
+          "label": "Rate"
+        },
+        {
+          "column": "G",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "H",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "D": "215"
+      },
+      "summaryStyles": {
+        "A": "211",
+        "B": "211",
+        "C": "59",
+        "D": "211",
+        "E": "211",
+        "F": "213",
+        "G": "212",
+        "H": "212"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "ecoaurp2b",
+      "path": "xl/worksheets/sheet30.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Recipient GSTIN/UIN"
+        },
+        {
+          "column": "B",
+          "label": "Recipient Name"
+        },
+        {
+          "column": "C",
+          "label": "Original Document Number"
+        },
+        {
+          "column": "D",
+          "label": "Original Document Date"
+        },
+        {
+          "column": "E",
+          "label": "Revised Document Number"
+        },
+        {
+          "column": "F",
+          "label": "Revised Document Date"
+        },
+        {
+          "column": "G",
+          "label": "Value of supplies made"
+        },
+        {
+          "column": "H",
+          "label": "Document type"
+        },
+        {
+          "column": "I",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "J",
+          "label": "Rate"
+        },
+        {
+          "column": "K",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "L",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {
+        "A": "18",
+        "B": "215",
+        "C": "215",
+        "D": "216",
+        "E": "215",
+        "F": "216"
+      },
+      "summaryStyles": {
+        "A": "59",
+        "B": "211",
+        "C": "59",
+        "D": "211",
+        "E": "211",
+        "F": "211",
+        "G": "212",
+        "H": "211",
+        "I": "211",
+        "J": "213",
+        "K": "212",
+        "L": "212"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "ecoaurp2c",
+      "path": "xl/worksheets/sheet31.xml",
+      "state": "visible",
+      "headers": [
+        {
+          "column": "A",
+          "label": "Financial Year"
+        },
+        {
+          "column": "B",
+          "label": "Original Month"
+        },
+        {
+          "column": "C",
+          "label": "Place Of Supply"
+        },
+        {
+          "column": "D",
+          "label": "Rate"
+        },
+        {
+          "column": "E",
+          "label": "Taxable Value"
+        },
+        {
+          "column": "F",
+          "label": "Cess Amount"
+        }
+      ],
+      "dataStyles": {},
+      "summaryStyles": {
+        "A": "211",
+        "B": "211",
+        "C": "211",
+        "D": "213",
+        "E": "212",
+        "F": "212"
+      },
+      "dataRowAttributes": {}
+    },
+    {
+      "name": "master",
+      "path": "xl/worksheets/sheet32.xml",
+      "state": "hidden",
+      "headers": [],
+      "dataStyles": {},
+      "summaryStyles": {},
+      "dataRowAttributes": {}
+    }
+  ],
+  "masterXmlSHA256": "faa87ceef8dbad475f5ea79e3b40ceaebf2935727661f2ae9c0db76e029a31aa"
+}

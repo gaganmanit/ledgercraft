@@ -1,0 +1,114 @@
+.gst-toolbar { gap: 1rem; align-items: center; margin: 1.1rem 0 1.6rem; font-size: .88rem; }
+.gst-toolbar a { border-bottom: 1px solid var(--line-strong); padding: .3rem 0; }
+.gst-section { margin-top: 2rem; }
+.gst-section + .gst-section { border-top: 1px solid var(--line-strong); padding-top: 1.7rem; }
+.gst-section h2, .gst-items-heading h2 { font-family: var(--serif); font-size: 1.5rem; font-weight: 500; margin: 0 0 .8rem; }
+.gst-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.2rem; margin-top: 1rem; }
+.gst-form label { font-size: .86rem; }
+.gst-wide { grid-column: 1 / -1; }
+.gst-form [hidden], .gst-compose [hidden] { display: none !important; }
+.gst-form p[data-form-message]:empty { display: none; }
+.gst-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.gst-section-heading > span { color: var(--ink-soft); font-size: .83rem; }
+.gst-detail { display: block; font-size: .74rem; color: var(--ink-soft); font-weight: 400; margin-top: .15rem; }
+.gst-code { font-family: var(--mono); font-size: .78rem; }
+.gst-add { margin: 1.5rem 0; }
+.gst-add summary { cursor: pointer; min-height: 44px; padding: .6rem 0; border-bottom: 1px solid var(--line-strong); }
+.gst-hsn-results { display: grid; max-height: 19rem; overflow: auto; margin-top: .4rem; }
+.gst-hsn-results:empty { display: none; }
+.gst-hsn-results button { text-align: left; font-size: .83rem; border-bottom: 1px solid var(--line); }
+.gst-hsn-results button:focus-visible { outline-offset: -2px; }
+.gst-hsn-message { margin: .3rem 0; }
+.gst-draft-status { display: flex; justify-content: space-between; align-items: center; gap: 1rem; color: var(--ink-soft); font-size: .82rem; border-bottom: 1px solid var(--line-strong); padding-bottom: .65rem; }
+.gst-draft-status button { font-size: .8rem; min-height: 36px; padding: .4rem .65rem; }
+.gst-items-heading { margin-top: 2rem; }
+.gst-items-heading a { font-size: .85rem; }
+.gst-line-scroll { overflow-x: auto; margin: 0 -1px 1rem; }
+.gst-entry-table { table-layout: fixed; min-width: 840px; font-size: .76rem; margin-top: .5rem; }
+.gst-entry-table th { font-size: .68rem; }
+.gst-entry-table th:first-child { width: 26%; }
+.gst-entry-table th:nth-child(2) { width: 10%; }
+.gst-entry-table th:nth-child(3) { width: 13%; }
+.gst-entry-table th:nth-child(4), .gst-entry-table th:nth-child(5), .gst-entry-table th:nth-child(6) { width: 9%; }
+.gst-entry-table th:last-child { width: 5%; }
+.gst-entry-table td { vertical-align: top; padding: .4rem .2rem; }
+.gst-entry-table input, .gst-entry-table select { font-size: .8rem; padding: .5rem .25rem; }
+.gst-entry-table input { text-align: right; font-family: var(--mono); }
+.gst-item-code { font-size: .68rem; color: var(--ink-soft); display: block; padding: .25rem; }
+.gst-remove { padding: .4rem !important; width: 100%; font-size: 1.2rem !important; }
+.gst-preview { margin-top: 1.5rem; padding: 1.2rem; background: var(--inset); }
+.gst-preview-number { display: flex; justify-content: space-between; padding-bottom: .7rem; margin-bottom: .7rem; border-bottom: 1px solid var(--line-strong); font-size: .9rem; }
+.gst-preview-number strong { font-family: var(--mono); }
+.gst-preview-breakdown { display: grid; gap: .55rem; max-width: 27rem; margin-left: auto; }
+.gst-preview-breakdown > div { display: flex; justify-content: space-between; gap: 2rem; font-size: .9rem; }
+.gst-preview-breakdown strong { font-family: var(--mono); font-size: .84rem; font-weight: 500; }
+.gst-preview-total { border-top: 2px solid var(--vermilion); padding-top: .65rem; margin-top: .35rem; }
+.gst-post { margin-top: 1.2rem; align-items: center; }
+.gst-post .quiet { font-size: .8rem; }
+.gst-register-filters { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; margin: 1.5rem 0 1rem; }
+.gst-filing-status { font-size: .8rem; color: var(--ink-soft); }
+.gst-document { margin-top: 1.5rem; }
+.gst-document-identity { display: flex; justify-content: space-between; gap: 2rem; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line-strong); padding: .8rem 0; }
+.gst-document-identity > div { display: grid; gap: .25rem; }
+.gst-document-identity span { font-size: .75rem; color: var(--ink-soft); }
+.gst-document-identity strong { font-family: var(--mono); font-size: .95rem; }
+.gst-addresses { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin: 1.5rem 0 1rem; }
+.gst-addresses h2 { font-size: .75rem; font-family: var(--sans); font-weight: 400; color: var(--ink-soft); margin: 0 0 .5rem; }
+.gst-addresses p { margin: .2rem 0; white-space: normal; font-size: .85rem; }
+.gst-document-context { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; font-size: .8rem; }
+.gst-document-context strong { font-weight: 600; margin-right: .5rem; }
+.gst-reference, .gst-delivery { font-size: .84rem; }
+.gst-document-table { font-size: .79rem; }
+.gst-document-table th { font-size: .7rem; }
+.gst-document-table .figure { font-size: .7rem; }
+.gst-document-table td, .gst-document-table th { vertical-align: top; padding: .65rem .3rem; }
+.gst-tax-cell > span { display: block; white-space: nowrap; font-size: .65rem; }
+.gst-document-bottom { display: grid; grid-template-columns: 1fr minmax(16rem, 38%); gap: 2rem; margin: 1rem 0 2.5rem; }
+.gst-document-totals { margin: 0; font-size: .83rem; }
+.gst-document-totals > div { display: flex; justify-content: space-between; gap: 1rem; padding: .3rem 0; }
+.gst-document-totals dd { margin: 0; font-family: var(--mono); font-size: .77rem; }
+.gst-document-totals .gst-total { border-top: 2px solid var(--vermilion); margin-top: .5rem; padding-top: .6rem; }
+.gst-terms { white-space: normal; font-size: .85rem; }
+.gst-signature { margin: 3rem 0 1rem; text-align: right; font-size: .85rem; }
+.gst-signature span { display: inline-block; padding-top: 2.5rem; }
+.gst-export-endorsement { font-size: .8rem; padding: .8rem; border: 1px solid var(--line-strong); }
+@media (max-width: 760px) {
+  .gst-form, .gst-register-filters { grid-template-columns: 1fr; }
+  .gst-wide { grid-column: auto; }
+  .gst-document-bottom { grid-template-columns: 1fr; }
+}
+@media print {
+  .gst-toolbar, .gst-filing-status { display: none !important; }
+  .gst-document { margin-top: .5rem; }
+  .gst-document-table { min-width: 0 !important; table-layout: auto; }
+  .gst-document-table td, .gst-document-table th { padding: .45rem .2rem; }
+  .gst-document-table .figure { font-size: 7pt; }
+  .gst-tax-cell > span { font-size: 6.5pt; }
+  .gst-addresses { gap: 1rem; }
+  .gst-addresses p, .gst-reference, .gst-document-context { font-size: 9pt; }
+  .gst-document-bottom { grid-template-columns: 1fr 40%; break-inside: avoid; }
+  .gst-signature { break-inside: avoid; }
+  .gst-export-endorsement { font-size: 8pt; }
+}
+.gst-registration-choice { max-width: 32rem; font-size: .86rem; margin: .8rem 0 1.2rem; }
+.gst-edit-master { appearance: none; background: transparent; color: inherit; font: inherit; font-weight: 600; padding: .25rem 0; text-align: left; min-height: 32px; border-bottom: 1px solid transparent; }
+.gst-edit-master:hover { border-bottom-color: var(--vermilion); }
+.gst-irp-print { display:flex; gap:1.2rem; align-items:center; margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--line-strong); break-inside:avoid }
+.gst-irp-print img { width:clamp(150px,18vw,235px); height:auto; flex:none }
+.gst-irp-print .gst-code { overflow-wrap:anywhere }
+@media print { .gst-irp-print img { width:55mm } .gst-irp-print { font-size:9pt } }
+.gst-document-bottom > div { min-width:0 }
+.gst-document-bottom .gst-irp-print { margin:0; padding:0; border:0; align-items:flex-start; gap:.65rem; }
+.gst-document-bottom .gst-irp-print h2 { font:600 .85rem var(--sans); margin:0 0 .4rem; }
+.gst-document-bottom .gst-irp-print p { font-size:.76rem; line-height:1.3; margin:.35rem 0; }
+.gst-document-bottom .gst-irp-print > div { min-width:0; }
+@media print {
+  .gst-document-bottom .gst-irp-print img { width:50mm; }
+  .gst-document-bottom .gst-irp-print p { font-size:8pt; }
+  .gst-document-bottom .gst-irp-print .gst-code { word-break:break-all; }
+}
+
+.tally-invoice-source { margin: .7rem 0 1rem; }
+.tally-invoice-source dl { display: grid; grid-template-columns: auto 1fr; gap: .4rem 1rem; }
+.tally-invoice-source dd { margin: 0; overflow-wrap: anywhere; }
+@media print { .tally-invoice-source { display: none; } }

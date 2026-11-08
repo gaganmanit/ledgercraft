@@ -1,0 +1,57 @@
+.tally-guide { margin: 1.2rem 0; border-block: 1px solid var(--line-strong); padding: .8rem 0; }
+.tally-guide summary, .tally-original summary { cursor: pointer; font-weight: 600; }
+.tally-guide li { margin-bottom: .5rem; }
+.tally-import-form { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.5rem 0; max-width: 48rem; }
+.tally-import-form label { display: grid; gap: .35rem; }
+.tally-wide { grid-column: 1 / -1; }
+.tally-import-form input[type="file"] { padding: .8rem 0; }
+.tally-source-files { padding-left: 1.2rem; }
+.tally-source-files small { display: block; overflow-wrap: anywhere; font-family: var(--mono); font-size: .68rem; margin: .2rem 0 .7rem; }
+.tally-issues { padding-left: 1.5rem; }
+.tally-issues li { margin: .8rem 0; }
+.tally-blocker { color: var(--vermilion); }
+.tally-confirm { display: flex; align-items: start; gap: .6rem; margin: 1.5rem 0; }
+.tally-confirm input { width: 1.1rem; height: 1.1rem; margin-top: .2rem; }
+.tally-fields { display: grid; grid-template-columns: minmax(8rem, .6fr) 1.4fr; gap: .5rem 1rem; }
+.tally-fields dt { color: var(--ink-soft); }
+.tally-fields dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tally-table-scroll { overflow-x: auto; }
+.tally-data-section { margin-top: 2rem; }
+.tally-original { margin-top: 2rem; }
+.tally-original pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 34rem; overflow: auto; font-size: .75rem; }
+.tally-source-filter { display: flex; flex-wrap: wrap; align-items: end; gap: .7rem; margin: 1.5rem 0; }
+.tally-source-filter label { display: grid; gap: .3rem; }
+.tally-source-filter label:nth-child(2) { flex: 1; min-width: 15rem; }
+@media (max-width: 760px) { .tally-import-form { grid-template-columns: 1fr; } .tally-fields { grid-template-columns: 1fr; gap: .2rem; } .tally-fields dd { margin-bottom: .7rem; } }
+@media (prefers-reduced-motion: reduce) { .tally-workspace { scroll-behavior: auto; } }
+@media print { .tally-toolbar, .tally-source-filter, .tally-original { display: none; } .tally-table-scroll { overflow: visible; } }
+
+.tally-export-menu { margin: 1rem 0; padding: .8rem 0; border-block: 1px solid var(--line-strong); }
+.tally-export-menu summary { cursor: pointer; font-weight: 600; }
+.tally-export-section { margin: 1.5rem 0; }
+.tally-export-section h2 { font-size: 1.2rem; }
+.tally-download { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; }
+.tally-download label { display: grid; gap: .3rem; min-width: 13rem; }
+.tally-download a { padding: .5rem 0; }
+@media print { .tally-export-menu, .tally-export-section { display: none; } }
+.tally-bill-review { margin-top: 2rem; border-top: 1px solid var(--line-strong); padding-top: 1rem; }
+.tally-bill-review h2 { font: 500 1.5rem var(--serif); }
+.tally-bill-review > p, .tally-bill-preview { font-size: .85rem; }
+.tally-bill-review summary { cursor: pointer; min-height: 44px; padding: .55rem 0; border-bottom: 1px solid var(--line-strong); }
+.tally-bill-filters { display: flex; flex-wrap: wrap; align-items: end; gap: .8rem; margin: 1rem 0; }
+.tally-bill-filters label { flex: 1; min-width: 11rem; font-size: .8rem; }
+.tally-bill-review table { font-size: .8rem; }
+.tally-bill-review table small { display: block; font-size: .73rem; font-weight: 400; color: var(--ink-soft); margin-top: .25rem; }
+.tally-bill-review .figure { font-size: .75rem; }
+.tally-bill-review [data-bill-review-error]:empty { display: none; }
+@media print { .tally-bill-filters, .tally-bill-review button, .tally-bill-review [data-bill-review-actions] { display: none !important; } }
+
+.tally-group-mappings { margin: 1.5rem 0; padding: 1rem 0; border-block: 1px solid var(--line-strong); }
+.tally-group-mappings label { display: grid; grid-template-columns: minmax(10rem, 1fr) minmax(13rem, 1fr); align-items: center; gap: .4rem 1rem; margin: .8rem 0; max-width: 42rem; }
+.tally-group-mappings small { grid-column: 1 / -1; color: var(--ink-soft); }
+.tally-group-mappings select { min-height: 44px; }
+.tally-opening-scope, .tally-gst-preview { max-width: 65ch; }
+@media (max-width: 600px) { .tally-group-mappings label { grid-template-columns: 1fr; } }
+
+.tally-group-mappings .tally-confirm { display: flex; gap: .6rem; }
+.tally-group-mappings .tally-confirm input { flex: 0 0 1.1rem; }

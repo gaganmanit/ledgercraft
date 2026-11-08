@@ -1,0 +1,68 @@
+import assert from 'node:assert/strict';
+import { runNative } from './native-command.mjs';
+import { createHash } from 'node:crypto';
+import { cp, mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const output=path.resolve(process.argv[2] || path.join(root,'output','itc-native-proof'));
+const scratch=await mkdtemp(path.join(tmpdir(),'financer-itc-native-'));
+await mkdir(output,{recursive:true});
+const run=args=>runNative(args,root);
+const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+let server;
+try {
+  const frozen=path.join(scratch,'source');await mkdir(frozen);
+  for (const name of ['package.json','server.js','lib','public']) await cp(path.join(root,name),path.join(frozen,name),{recursive:true});
+  const {createStore}=await import(pathToFileURL(path.join(frozen,'lib/store.js')));
+  const {start}=await import(pathToFileURL(path.join(frozen,'server.js')));
+  const {gstinCheckDigit}=await import(pathToFileURL(path.join(frozen,'lib/gst.js')));
+  const makeGstin=stem=>stem+gstinCheckDigit(stem);
+  const store=createStore(path.join(scratch,'data'));
+  const {company}=await store.create({name:'Synthetic saved statement ITC',booksFrom:'2026-04-01'});
+  const {registration}=await store.saveGstMaster(company.id,'registration',{name:'Synthetic Buyer',gstin:makeGstin('23ABCDE1234F1Z'),stateCode:'23',address:'Synthetic buyer address, Bhopal',pincode:'462001'});
+  const {party}=await store.saveGstMaster(company.id,'party',{name:'Synthetic Supplier',kind:'supplier',gstin:makeGstin('27PQRST5678L1Z'),stateCode:'27',address:'Synthetic supplier address, Mumbai',pincode:'400001'});
+  const {item}=await store.saveGstMaster(company.id,'item',{name:'Synthetic eligible service',kind:'service',hsnSac:'998599',unit:'OTH',gstRateBps:1800,pricePaise:10000,purchasePricePaise:10000});
+  const {invoice}=await store.passGstInvoice(company.id,{type:'Purchase',registrationId:registration.id,partyId:party.id,date:'2026-04-08',placeOfSupply:'23',itcEligibility:'pending',supplierInvoiceNumber:'S/1',items:[{itemId:item.id,quantity:'1',unitPricePaise:10000}]});
+  const statement={data:{gstin:registration.gstin,rtnprd:'042026',itcsumm:{},docdata:{b2b:[{ctin:party.gstin,inv:[{inum:'S/1',dt:'08-04-2026',val:118,txval:100,igst:18,pos:'23',rev:'N',itcavl:'Y'}]}]}}};
+  const original=Buffer.from('\uFEFF'+JSON.stringify(statement,null,2)+'\r\n','utf8');
+  const source=path.join(scratch,'April source ₹.json');await writeFile(source,original);
+  server=await start({dataDir:path.join(scratch,'data')});
+  const base=`http://127.0.0.1:${server.address().port}`;
+  const config=path.join(scratch,'fixture.json');
+  await writeFile(config,JSON.stringify({base,company:company.id,registration:registration.id,invoice:invoice.id,output,source,sha256:digest(original)}));
+  const executable=path.join(scratch,'financer-itc-ui');
+  const nativeSource=path.join(scratch,'gst-itc-ui.swift');await cp(path.join(root,'test/gst-itc-ui.swift'),nativeSource);
+  await run(['/usr/bin/swiftc','-swift-version','5',nativeSource,'-o',executable,'-framework','AppKit','-framework','WebKit']);
+  await run([executable,config]);
+  const endpoint=`${base}/api/companies/${company.id}`;
+  const saved=await (await fetch(endpoint)).json();
+  assert.equal(saved.company.gstStatements.length,1);
+  assert.equal(saved.company.gstStatements[0].id,digest(original));
+  assert.equal(saved.company.gst.itc.records.length,1);
+  const record=saved.company.gst.itc.records[0];
+  assert.equal(record.action,'claim');assert.equal(record.components.igstPaise,1800);
+  assert.equal(record.date,'2026-05-02');assert.equal(record.evidence.statement.id,digest(original));
+  assert.equal(record.evidence.statement.sha256,digest(original));assert.equal(record.evidence.statement.matchStatus,'Matched');assert.match(record.evidence.statement.rowKey,/^[a-f0-9]{64}$/);assert.equal(record.evidence.statement.availability,'Y');
+  for (const key of ['invoiceHeld','received','businessUse','notBlocked','supplierReported','supplierTaxPaid','returnFurnished','paymentReview','noTaxDepreciation']) assert.equal(record.evidence[key],true,key);
+  assert.equal(record.evidence.annualReturnStatus,'not-filed');
+  assert.deepEqual(await readFile(path.join(output,'statement-original-1.json')),original);
+  assert.deepEqual(await readFile(path.join(output,'statement-original-2.json')),original);
+  const backup=JSON.parse(await readFile(path.join(output,'company-backup.json'),'utf8'));
+  assert.ok(backup.gstStatementFiles[digest(original)]);
+  const native=JSON.parse(await readFile(path.join(output,'native-results.json'),'utf8'));
+  const restored=await (await fetch(`${base}/api/companies/${native.restoredCompany}`)).json();
+  assert.deepEqual(restored.company.gst.itc.records,saved.company.gst.itc.records);
+  assert.deepEqual(restored.company.gstStatements,saved.company.gstStatements);
+  const april=await (await fetch(endpoint+`/gst-returns?registration=${registration.id}&month=2026-04`)).json();
+  const may=await (await fetch(endpoint+`/gst-returns?registration=${registration.id}&month=2026-05`)).json();
+  assert.equal(april.itc.table4['4A(5)'].igstPaise,0);assert.equal(may.itc.table4['4A(5)'].igstPaise,1800);assert.equal(may.itc.reviewedNet.igstPaise,1800);
+  const hashes={};for(const name of ['public/gst-itc-ui.js','public/gst-returns-ui.js','public/gst-2b-ui.js','lib/gst-itc.js','lib/gst-statement-library.js']) hashes[name]=digest(await readFile(path.join(frozen,name)));
+  await writeFile(path.join(output,'backend-results.json'),JSON.stringify({passed:true,environment:'isolated synthetic purchase and locally frozen source/assets',invoice:'S/1',invoicePaise:11800,claimDate:'2026-05-02',claimedIgstPaise:1800,april4A5Paise:0,may4A5Paise:1800,may4CPaise:1800,sourceBytes:original.length,sourceSHA256:digest(original),originalDownloadExact:true,restoredOriginalDownloadExact:true,restoredStatementManifestExact:true,restoredItcRecordsExact:true,statementEvidence:record.evidence.statement,manualConfirmations:true,sourceSHA256ByFile:hashes},null,2));
+  console.log(`Native GSTR-2B/ITC proof saved to ${output}`);
+} finally {
+  if(server){server.closeIdleConnections();await new Promise(resolve=>server.close(resolve));}
+  await rm(scratch,{recursive:true,force:true});
+}
