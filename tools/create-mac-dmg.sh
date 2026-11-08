@@ -33,7 +33,14 @@ time.tzset()
 epoch = 978307200  # Fixed public file date: 01-01-2001, UTC.
 
 def run(command, **options):
-    return subprocess.run([str(part) for part in command], check=True, **options)
+    try:
+        return subprocess.run([str(part) for part in command], check=True, **options)
+    except subprocess.CalledProcessError as error:
+        detail = error.stderr or error.stdout
+        if detail:
+            if isinstance(detail, bytes): detail = detail.decode("utf-8", errors="replace")
+            print(detail, file=sys.stderr, flush=True)
+        raise
 
 def digest(file):
     h = hashlib.sha256()
@@ -171,11 +178,11 @@ try:
         shutil.move(candidate, stage / "Ledgercraft.app")
         (stage / "Applications").symlink_to("/Applications")
         normalize_dates(stage)
-        writable = work / "release-master.dmg"
+        writable = work / "release-master.iso"
         print("Creating release disk image", flush=True)
-        # Master HFS+ directly: unlike copying through a writable mounted volume,
-        # this omits the build host's protected com.apple.provenance attributes.
-        run(["/usr/bin/hdiutil", "makehybrid", "-hfs", "-hfs-volume-name", "Ledgercraft " + version, "-o", writable, stage])
+        # UDF preserves executable modes and the Applications symlink without
+        # synthesizing FinderInfo attributes that invalidate signed resources.
+        run(["/usr/bin/hdiutil", "makehybrid", "-udf", "-udf-volume-name", "Ledgercraft " + version, "-o", writable, stage])
         mount = work / "image-mount"
         mount.mkdir()
         with writable.open("rb") as image:
