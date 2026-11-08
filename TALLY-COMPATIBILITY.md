@@ -20,13 +20,13 @@ The importer maps the standard account-group tree and supported custom child gro
 
 Invoice inventory accounting allocations can complete the accounting posting when the source uses that structure. The original type, date, number and source identity remain available when Ledgercraft needs to disambiguate an internal voucher number.
 
-Cancelled, optional and recognised non-accounting order or inventory records are retained without accounting postings. Cost centres, payroll, bank allocations, extension fields and unsupported policies remain source details unless a specific operational workflow supports them.
+Cancelled, optional and recognised non-accounting order or inventory records are retained without accounting postings. Attendance, Material In and Out and Job Work order vouchers are skipped with a listed reason rather than blocking the import; Payroll vouchers post as journals. Custom primary groups are mapped from their Tally nature flags into a top-level group. Cost centres, bank allocations, extension fields and unsupported policies remain source details unless a specific operational workflow supports them.
 
 Missing masters, unknown groups, conflicting identities, unsupported accounting types, contradictory signs, unbalanced postings and amounts outside the safe paise range can block creation. A debit/credit sign disagreement requires a reviewed interpretation that still passes the voucher's accounting rules.
 
 ## Preview and overlap decisions
 
-Import preview reconciles source and proposed posting counts, debit and credit totals, excluded records, duplicates and exceptions. Referenced ledger groups can be reviewed when a transaction workbook does not contain full masters. A transaction-only workbook exposes its missing opening-balance scope; movements from a selected starting date do not establish the company's complete historical closing balances.
+Import preview reconciles source and proposed posting counts, debit and credit totals, excluded records, duplicates and exceptions. When the export includes TrialBalance.xml, the preview compares every ledger's closing balance with the source and blocks on any difference; the Windows bridge exports it, together with Company.xml, and refuses a start date after the books beginning so that opening balances cannot be misstated by a partial period. Referenced ledger groups can be reviewed when a transaction workbook does not contain full masters. A transaction-only workbook exposes its missing opening-balance scope; movements from a selected starting date do not establish the company's complete historical closing balances.
 
 Identical source copies are deduplicated. Distinct records in separate exports that share a voucher type, date and number require an authoritative-source choice or an explicit decision that they are separate transactions. Changing files, dates, names or review choices invalidates the prior confirmation. An obsolete preview response cannot restore that confirmation.
 
@@ -38,7 +38,7 @@ Supported stock masters use simple units with declared precision of zero to six 
 
 Actual quantities drive physical movement. Billed quantities remain separately identifiable. If a workbook supplies only billed quantities, the operator can explicitly confirm that they represent the physical quantities; otherwise that physical quantity remains unresolved. A GST reporting-only choice does not invent a stock movement.
 
-Ledgercraft supports perpetual FIFO and moving-average costing. Source FIFO Perpetual items can use the native FIFO policy. An omitted source costing policy is a disclosed gap. Annual FIFO, LIFO, standard-cost schedules and other unsupported valuation methods remain source exceptions. Selling price does not supply outgoing inventory cost.
+Ledgercraft supports perpetual FIFO and moving-average costing. Source FIFO Perpetual items can use the native FIFO policy. Stock opening values follow Tally's sign convention on import and export: a negative OPENINGVALUE is the normal debit stock value, and a positive one is flagged for review. Within one day, receipts are processed before issues, so a sale entered before the same day's purchase does not leave the year's valuation incomplete. An omitted source costing policy is a disclosed gap. Annual FIFO, LIFO, standard-cost schedules and other unsupported valuation methods remain source exceptions. Selling price does not supply outgoing inventory cost.
 
 Compound or alternate units, named batches, inconsistent location breakups, allocated additional costs, manufacturing transformations, order/receipt workflows and nested-location rollups need further coverage. Source price schedules and bills of materials can be retained without becoming active operational rules. Omitted stock remains an explicit limitation in the stock and financial working figures.
 
