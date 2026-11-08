@@ -6,7 +6,7 @@ const BUCKETS = { unreviewed: 'Pending review', unclaimed: 'Marked eligible, not
 const BUCKET_TONE = { unreviewed: 'warn', unclaimed: 'warn', claimable: 'ok', permanent: '', 'temporary-hold': 'warn', 'temporary-reversed': 'warn', 'temporary-gross': 'warn' };
 const PERMANENT = [['section17(5)', 'Section 17(5): blocked credit'], ['rule38', 'Rule 38'], ['rule42', 'Rule 42'], ['rule43', 'Rule 43'], ['section16(4)', 'Section 16(4): time limit'], ['pos-restriction', 'Place-of-supply restriction'], ['other-permanent', 'Other permanent ineligibility']];
 const TEMPORARY = [['rule37', 'Rule 37: supplier-payment condition'], ['rule37A', 'Rule 37A: supplier return condition'], ['section16(2)(b)', 'Section 16(2)(b): receipt condition'], ['section16(2)(c)', 'Section 16(2)(c): tax-payment condition'], ['clerical-correction', 'Correction of an earlier inadvertent claim'], ['other-temporary', 'Other temporary reversal']];
-const CHECKS = [['invoiceHeld', 'Invoice or debit note held'], ['received', 'Goods or services received'], ['businessUse', 'Business use and taxable-supply conditions met'], ['notBlocked', 'Section 17 blocked-credit review passed'], ['supplierReported', 'Supplier reporting condition supported'], ['supplierTaxPaid', 'Supplier tax-payment condition supported'], ['returnFurnished', 'Return-furnishing condition met'], ['paymentReview', 'Supplier-payment and 180-day conditions reviewed'], ['noTaxDepreciation', 'Tax component not claimed as depreciation']];
+const CHECKS = [['invoiceHeld', 'Invoice or debit note held'], ['received', 'Selected goods or services received'], ['businessUse', 'Business use and taxable-supply conditions met'], ['notBlocked', 'Section 17 blocked-credit review passed'], ['supplierReported', 'Supplier reporting condition supported'], ['supplierTaxPaid', 'Supplier tax-payment condition supported'], ['returnFurnished', 'Return-furnishing condition met'], ['paymentReview', 'Supplier-payment and 180-day conditions reviewed'], ['noTaxDepreciation', 'Tax component not claimed as depreciation']];
 const total = (row = {}) => HEADS.reduce((sum, head) => sum + (row[head + 'Paise'] || 0), 0);
 const dateLabel = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('-') : value || '—';
 const DISCARD = 'Discard the decision you have started for this document?';
@@ -95,7 +95,8 @@ function renderHistory(report, selected, esc, money, book) {
   const records = report.records.filter(record => record.invoiceId === selected.id || record.transfers.some(transfer => transfer.invoiceId === selected.id));
   const ledgerName = id => report.ledgers.find(ledger => ledger.id === id)?.name || id;
   const statement = value => value ? `<p>Statement for ${esc(value.period)}.${value.matchStatus ? ` Match status ${esc(value.matchStatus)}.` : ''} Row <span class="code">${esc(value.rowKey)}</span>.</p>` : '';
-  return `<div class="subsection itc-history"><h2>Review history</h2>${records.length ? `<div class="details-list">${records.map(record => `<details data-itc-record="${esc(record.id)}"><summary><span class="date-cell">${esc(dateLabel(record.date))}</span><span>${esc(ACTIONS[record.action])}</span><small class="code">${esc(record.reference)}</small><span class="itc-amount">₹${money(total(record.components))}</span></summary><p>${esc(record.evidence.basis)}</p><p>Evidence <span class="code">${esc(record.evidence.documentReference)}</span></p>${statement(record.evidence.statement)}<div class="table-scroll"><table><caption>Accounting entry</caption><thead><tr><th>Ledger</th><th>Side</th><th class="figure">Amount ₹</th></tr></thead><tbody>${record.postingLines.map(line => `<tr><td>${esc(ledgerName(line.ledgerId))}</td><td>${esc(line.dc)}</td><td class="figure">${money(line.paise)}</td></tr>`).join('') || '<tr><td colspan="3" class="quiet">Evidence recorded. No additional accounting entry was needed.</td></tr>'}</tbody></table></div><div class="table-scroll"><table><caption>Return working paper</caption><thead><tr><th>Table</th><th>Direction</th>${HEADS.map(head => `<th class="figure">${head.toUpperCase()} ₹</th>`).join('')}</tr></thead><tbody>${record.returnRows.map(row => `<tr><td>${esc(row.table)}</td><td>${row.sign < 0 ? 'Reduction' : 'Addition'}${row.table.startsWith('4D') ? ' (information only)' : ''}</td>${HEADS.map(head => `<td class="figure">${money(row[head + 'Paise'])}</td>`).join('')}</tr>`).join('') || '<tr><td colspan="7" class="quiet">No new return claim or reversal was recorded.</td></tr>'}</tbody></table></div>${record.voucherId ? `<p><a href="${book}/v/Journal/${encodeURIComponent(record.voucherId)}">Open accounting entry</a></p>` : ''}</details>`).join('')}</div>` : '<p class="empty">No dated ITC decisions are recorded for this document. Record one with the form above.</p>'}</div>`;
+  const serviceReceipts = list => list?.length ? `<dl class="kv" data-itc-service-receipts>${list.map(receipt => `<dt>Service received ${esc(dateLabel(receipt.date))}</dt><dd>Line ${receipt.lineIndex + 1}, ${esc(ledgerName(receipt.sourceLedgerId))}. Reference <span class="code">${esc(receipt.reference)}</span>.</dd>`).join('')}</dl>` : '';
+  return `<div class="subsection itc-history"><h2>Review history</h2>${records.length ? `<div class="details-list">${records.map(record => `<details data-itc-record="${esc(record.id)}"><summary><span class="date-cell">${esc(dateLabel(record.date))}</span><span>${esc(ACTIONS[record.action])}</span><small class="code">${esc(record.reference)}</small><span class="itc-amount">₹${money(total(record.components))}</span></summary><p>${esc(record.evidence.basis)}</p><p>Evidence <span class="code">${esc(record.evidence.documentReference)}</span></p>${serviceReceipts(record.evidence.serviceReceipts)}${statement(record.evidence.statement)}<div class="table-scroll"><table><caption>Accounting entry</caption><thead><tr><th>Ledger</th><th>Side</th><th class="figure">Amount ₹</th></tr></thead><tbody>${record.postingLines.map(line => `<tr><td>${esc(ledgerName(line.ledgerId))}</td><td>${esc(line.dc)}</td><td class="figure">${money(line.paise)}</td></tr>`).join('') || '<tr><td colspan="3" class="quiet">Evidence recorded. No additional accounting entry was needed.</td></tr>'}</tbody></table></div><div class="table-scroll"><table><caption>Return working paper</caption><thead><tr><th>Table</th><th>Direction</th>${HEADS.map(head => `<th class="figure">${head.toUpperCase()} ₹</th>`).join('')}</tr></thead><tbody>${record.returnRows.map(row => `<tr><td>${esc(row.table)}</td><td>${row.sign < 0 ? 'Reduction' : 'Addition'}${row.table.startsWith('4D') ? ' (information only)' : ''}</td>${HEADS.map(head => `<td class="figure">${money(row[head + 'Paise'])}</td>`).join('')}</tr>`).join('') || '<tr><td colspan="7" class="quiet">No new return claim or reversal was recorded.</td></tr>'}</tbody></table></div>${record.voucherId ? `<p><a href="${book}/v/Journal/${encodeURIComponent(record.voucherId)}">Open accounting entry</a></p>` : ''}</details>`).join('')}</div>` : '<p class="empty">No dated ITC decisions are recorded for this document. Record one with the form above.</p>'}</div>`;
 }
 
 function bindReview(ctx) {
@@ -109,13 +110,22 @@ function bindReview(ctx) {
   const sourceOptions = action => action === 'claim' || action === 'prior-claim' ? ['unreviewed', 'unclaimed', 'temporary-hold', ...(form.elements.correctIneligibility.checked ? ['permanent'] : [])] : action === 'temporary' ? ['claimable', 'unreviewed', 'unclaimed'] : action === 'reclaim' ? ['temporary-reversed', 'temporary-gross'] : ['claimable', 'unreviewed', 'unclaimed', 'temporary-hold', 'temporary-reversed', 'temporary-gross', ...(selected.initialEligibility === 'ineligible' ? ['permanent'] : [])];
   const chosenStatement = () => form.elements.statementId.value === '' ? null : candidates[Number(form.elements.statementId.value)] || null;
   const activeRows = () => [...amountRoot.querySelectorAll('[data-itc-row]')].filter(row => row.querySelector('[data-itc-choose]').checked);
+  const needsServiceReceipt = () => ['claim', 'reclaim', 'prior-claim'].includes(form.elements.action.value) || form.elements.reportingMode.value === 'gross-and-reversal';
   const updateTotal = () => {
     let amount = 0;
     try { for (const row of activeRows()) for (const head of HEADS) amount += parseRupees(row.querySelector(`[data-itc-head="${head}"]`).value || '0'); }
     catch { form.querySelector('[data-itc-total]').textContent = 'Enter amounts in rupees and paise.'; return; }
     form.querySelector('[data-itc-total]').textContent = `Decision amount ₹${formatINR(amount)}`;
     const unavailable = chosenStatement()?.availability === 'N' && ['claim', 'reclaim', 'prior-claim'].includes(form.elements.action.value);
-    saveButton.disabled = !amount || unavailable || selected.type === 'Credit Note' && selected.creditSettled;
+    const claimDate = form.elements.action.value === 'prior-claim' ? form.elements.priorClaimDate.value : form.elements.date.value;
+    const pendingReceipt = needsServiceReceipt() && activeRows().some(row => {
+      const receipt = allocationRows[Number(row.dataset.itcRow)].serviceReceipt;
+      if (!receipt) return false;
+      if (receipt.status === 'confirmed') return !claimDate || receipt.date > claimDate;
+      const fields = amountRoot.querySelector(`[data-itc-service-receipt="${receipt.lineIndex}"]`);
+      return !fields?.querySelector('[data-itc-service-received]')?.checked || !fields.querySelector('[data-itc-service-date]')?.value || fields.querySelector('[data-itc-service-date]').value > claimDate || !fields.querySelector('[data-itc-service-reference]')?.value.trim();
+    });
+    saveButton.disabled = !amount || unavailable || pendingReceipt || selected.type === 'Credit Note' && selected.creditSettled;
   };
   function renderAllocations() {
     const action = form.elements.action.value;
@@ -132,9 +142,18 @@ function bindReview(ctx) {
     } else for (const line of selected.lines) for (const bucket of sourceOptions(action)) {
       const amounts = { ...line.balances[bucket] };
       if (action === 'permanent' && bucket === 'permanent') for (const head of HEADS) amounts[head + 'Paise'] = Math.max(0, amounts[head + 'Paise'] - line.expenseReviewed[head + 'Paise']);
-      if (total(amounts)) allocationRows.push({ lineIndex: line.lineIndex, bucket, label: `Line ${line.lineIndex + 1}, ${line.name || line.itemId}, ${BUCKETS[bucket]}`, amounts, checked: true });
+      if (total(amounts)) allocationRows.push({ lineIndex: line.lineIndex, bucket, label: `Line ${line.lineIndex + 1}, ${line.name || line.itemId}, ${BUCKETS[bucket]}`, amounts, checked: !(needsServiceReceipt() && line.serviceReceipt?.status === 'pending'), serviceReceipt: line.serviceReceipt });
     }
-    amountRoot.innerHTML = allocationRows.length ? `<table><thead><tr><th>Source to include</th>${HEADS.map(head => `<th class="figure">${head.toUpperCase()} ₹</th>`).join('')}</tr></thead><tbody>${allocationRows.map((row, index) => `<tr data-itc-row="${index}"><td><label class="check"><input type="checkbox" data-itc-choose${row.checked ? ' checked' : ''}><span>${esc(row.label)}</span></label></td>${HEADS.map(head => `<td class="figure"><input data-itc-head="${head}" inputmode="decimal" aria-label="${esc(row.label)} ${head.toUpperCase()} rupees" value="${(row.amounts[head + 'Paise'] / 100).toFixed(2)}"></td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="quiet">No tax remains in a disposition this decision can use. Choose another decision.</p>';
+    const renderedReceipts = new Set();
+    const receiptFields = row => {
+      const receipt = row.serviceReceipt;
+      if (!receipt || !needsServiceReceipt()) return '';
+      if (receipt.status === 'confirmed') return `<p class="form-note" data-itc-service-established>Service received ${esc(dateLabel(receipt.date))} for ${esc(receipt.ledgerName)}. Reference <span class="code">${esc(receipt.reference)}</span>.</p>`;
+      if (renderedReceipts.has(receipt.lineIndex)) return '<p class="form-note">Receipt evidence is shared with this service line above.</p>';
+      renderedReceipts.add(receipt.lineIndex);
+      return `<div data-itc-service-receipt="${receipt.lineIndex}"><p class="form-note"><span class="pill warn">Receipt pending</span> ${esc(receipt.ledgerName)}. Include this service after receipt or completion.</p><label class="check"><input type="checkbox" data-itc-service-received><span>This selected service was received or completed</span></label><label>Service receipt date <input type="date" data-itc-service-date></label><label>Receipt evidence reference <input data-itc-service-reference maxlength="500"></label></div>`;
+    };
+    amountRoot.innerHTML = allocationRows.length ? `<table><thead><tr><th>Source to include</th>${HEADS.map(head => `<th class="figure">${head.toUpperCase()} ₹</th>`).join('')}</tr></thead><tbody>${allocationRows.map((row, index) => `<tr data-itc-row="${index}"><td><label class="check"><input type="checkbox" data-itc-choose${row.checked ? ' checked' : ''}><span>${esc(row.label)}</span></label>${receiptFields(row)}</td>${HEADS.map(head => `<td class="figure"><input data-itc-head="${head}" inputmode="decimal" aria-label="${esc(row.label)} ${head.toUpperCase()} rupees" value="${(row.amounts[head + 'Paise'] / 100).toFixed(2)}"></td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="quiet">No tax remains in a disposition this decision can use. Choose another decision.</p>';
     updateTotal();
   }
   function mode() {
@@ -166,12 +185,12 @@ function bindReview(ctx) {
     location.hash = `${book}/gst-itc/${encodeURIComponent(event.target.value)}?to=${encodeURIComponent(report.to)}`;
   });
   form.elements.action.addEventListener('change', mode);
-  form.elements.reportingMode.addEventListener('change', context);
+  form.elements.reportingMode.addEventListener('change', () => { context(); renderAllocations(); });
   form.elements.annualReturnStatus.addEventListener('change', context);
   form.elements.correctIneligibility.addEventListener('change', renderAllocations);
   amountRoot.addEventListener('input', updateTotal);
   amountRoot.addEventListener('change', updateTotal);
-  form.addEventListener('input', () => { delete form.dataset.requestId; error.textContent = ''; });
+  form.addEventListener('input', () => { delete form.dataset.requestId; error.textContent = ''; updateTotal(); });
   form.elements.statementId.addEventListener('change', () => {
     const statement = chosenStatement();
     form.querySelector('[data-itc-statement-status]').textContent = statement ? `${statement.matchStatus || 'Saved document'} in the statement for ${statement.period}. ITC ${statement.availability === 'N' ? 'not available' : statement.availability === 'Y' ? 'available in the statement' : 'not specified'}.${statement.reason ? ' ' + statement.reason : ''}` : 'Use the separate evidence reference and statutory review recorded above.';
@@ -201,6 +220,15 @@ function bindReview(ctx) {
         const amounts = Object.fromEntries(HEADS.map(head => [head + 'Paise', parseRupees(row.querySelector(`[data-itc-head="${head}"]`).value || '0')]));
         return action === 'credit-note' ? { invoiceId: source.invoiceId, lineIndex: source.lineIndex, noteLineIndex: source.noteLineIndex, bucket: source.bucket, ...amounts } : { lineIndex: source.lineIndex, fromBucket: source.bucket, ...amounts };
       });
+      if (needsServiceReceipt()) {
+        const receipts = activeRows().flatMap(row => {
+          const receipt = allocationRows[Number(row.dataset.itcRow)].serviceReceipt;
+          const fields = receipt && amountRoot.querySelector(`[data-itc-service-receipt="${receipt.lineIndex}"]`);
+          return receipt?.status === 'pending' ? [{ lineIndex: receipt.lineIndex, sourceLineId: receipt.sourceLineId, sourceLedgerId: receipt.sourceLedgerId, received: fields.querySelector('[data-itc-service-received]').checked,
+            date: fields.querySelector('[data-itc-service-date]').value, reference: fields.querySelector('[data-itc-service-reference]').value }] : [];
+        });
+        if (receipts.length) evidence.serviceReceipts = receipts.filter((row, index) => receipts.findIndex(other => other.lineIndex === row.lineIndex) === index);
+      }
       form.dataset.requestId ||= crypto.randomUUID();
       const input = { invoiceId: selected.id, date: data.get('date'), reference: data.get('reference'), requestId: form.dataset.requestId, evidence,
         ...(action === 'credit-note' ? { creditSources: allocations } : { lineAllocations: allocations }),

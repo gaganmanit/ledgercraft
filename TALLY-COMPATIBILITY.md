@@ -46,7 +46,7 @@ New imports save supported stock projections. Earlier imports can review activat
 
 ## GST facts and activation
 
-Imported tax ledger postings form part of the accounting book. Creating a native GST document is a separate reviewed action. The current source-GST workflow supports reconciled domestic forward-charge taxable goods sales, purchases and supported linked credit and debit notes. Other document types, classifications and tax components remain available for review.
+Imported tax ledger postings form part of the accounting book. Creating a native GST document is a separate reviewed action. The current source-GST workflow supports reconciled domestic forward-charge taxable sales and purchases of goods, services and combinations of the two, plus supported linked credit and debit notes. Other document types, classifications and tax components remain available for review.
 
 The source review shows seller and buyer GSTINs, HSN, GST rates and tax classification facts from supported invoice fields and companion masters. Provenance identifies the source record, field and effective date. Future or conflicting master facts are distinguished from facts applicable to the invoice date.
 
@@ -55,6 +55,14 @@ Select the business registration, the corresponding customer or supplier ledger,
 Activation checks item values, tax components, total consideration, party linkage and the exact accounting posting. It preserves the imported voucher and supported original stock linkage. Confirmed invoices then feed the supported GST returns and HSN workings. Search and pages limit the review to the displayed rows; unsaved drafts survive page changes and selections apply only to the displayed page.
 
 On a regular purchase the supplier GSTIN comes from the creditor and the buyer GSTIN from the company. The stock receipt carries actual quantity and cost, while invoice lines use billed quantity. The booking date, supplier invoice date and reviewed goods-received date are separate. A missing supplier reference or date requires supporting evidence before activation. Input tax remains pending until a dated review. A later match to a saved GSTR-2B file uses the supplier number and document date. Supported outward invoices keep their previous source representation.
+
+### Service ledgers and mixed invoices
+
+An accounting invoice can have several service ledgers, each with its own amount, SAC and historical tax rate. Ledgercraft preserves the ledger posting and the accounting entry for each service. A service that is supplied as a lump sum has no physical quantity. Its printed invoice identifies the amount-only basis. The return shows the service SAC with UQC NA and quantity zero, and the e-invoice preparation omits the optional quantity and unit. Goods on the same invoice retain their billed and physical quantities. New imports can post their stock immediately when the original goods allocations reconcile by ledger and the source identifies the separate services. Earlier books retain their recorded baseline and can activate a reviewed mixed invoice.
+
+The review distinguishes dated source classifications, an operator-confirmed service ledger and an unresolved posting. Each proposed service must reconcile to its own source amount and the document's tax heads. A generic income or expense ledger needs evidence before it can be treated as a service. The XML exporter writes the service tax particulars on the financial row and item allocations on the goods rows. Unsupported source allocations remain accessible through the full archive. [Tally's service invoice workflow](https://help.tallysolutions.com/gst-sales-tally/) · [IRP item fields](https://einvoice6.gst.gov.in/content/kb/generate-through-web-form/)
+
+A purchase can be booked before service acceptance. ITC review binds each claimed service line to a dated receipt reference. A goods-only claim can proceed while a service is pending. A standalone outward e-way bill for a mixed invoice includes only the goods, their HSN, actual movement quantities where supplied, and their share of the invoice value and taxes. [NIC e-way bill FAQ](https://docs.ewaybillgst.gov.in/html/faq1.html)
 
 ### Credit and debit notes
 

@@ -75,6 +75,26 @@ test("IRP bulk and NIC EWB JSON preserve exact invoice fields and amounts", asyn
   });
 });
 
+test("a mixed invoice sends services to IRP and restricts standalone movement and evidence to goods", async () => {
+  await withInvoice(async ({store,company,invoice:base,preparation}) => {
+    const {item:service}=await store.saveGstMaster(company.id,"item",{name:"Synthetic design service",kind:"service",hsnSac:"998391",unit:"OTH",gstRateBps:1800,pricePaise:30000});
+    const post=items=>store.passGstInvoice(company.id,{type:"Sales",registrationId:base.registrationId,partyId:base.partyId,date:base.date,placeOfSupply:base.placeOfSupply,items});
+    const {invoice}=await post([{itemId:base.items[0].itemId,quantity:"2",unitPricePaise:10000},{itemId:service.id,quantity:"1"}]);
+    const [irp]=irpBulk(invoice,preparation);
+    assert.deepEqual(irp.ItemList.map(row=>[row.HsnCd,row.IsServc]),[["8541","N"],["998391","Y"]]);
+    assert.equal(irp.ValDtls.TotInvVal,590);
+    const request=ewaybillDocument(invoice,preparation);
+    assert.deepEqual(request.itemList.map(row=>[row.hsnCode,row.quantity,row.taxableAmount]),[[8541,2,200]]);
+    assert.deepEqual([request.totalValue,request.igstValue,request.totInvValue],[200,36,236]);
+    const result={ewayBillNo:"123456789012",ewayBillDate:"08/11/2026 12:00:00 PM"};
+    assert.equal(acknowledgementRecord(invoice,{kind:"ewaybill",result,submittedRequest:request}).trust,"reported");
+    assert.throws(()=>acknowledgementRecord(invoice,{kind:"ewaybill",result,submittedRequest:{...request,totInvValue:590}}),/totInvValue/);
+    assert.throws(()=>acknowledgementRecord(invoice,{kind:"ewaybill",result,submittedRequest:{...request,itemList:[{...request.itemList[0],hsnCode:998391}]}}),/goods|item/i);
+    const {invoice:onlyService}=await post([{itemId:service.id,quantity:"1"}]);
+    assert.throws(()=>ewaybillDocument(onlyService,preparation),/physical goods/);
+  });
+});
+
 test("inclusive IRP values use tax-exclusive commercial fields without changing totals", async () => {
   await withInvoice(async ({ invoice, preparation }) => {
     const document = irpBulk(invoice, preparation)[0];

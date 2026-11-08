@@ -22,7 +22,7 @@ Extend the supported return sections and correction workflows, including same-pe
 
 ### More Tally workflows
 
-Extend the reviewed domestic purchase and sales workflow to additional source document types and tax treatments, including services, mixed goods and services, reverse charge and notes with additional allocations. Add operational coverage for further voucher types, allocated costs, compound units, batches, manufacturing and order/receipt flows. Preserve unsupported source details until their posting and quantity effects can be reconciled explicitly.
+Extend reviewed source activation to service credit and debit notes, reverse-charge imports from Tally, non-domestic supplies and notes with additional allocations. Add operational coverage for further voucher types, allocated costs, compound units, batches, manufacturing and order/receipt flows. Preserve unsupported source details until their posting and quantity effects can be reconciled explicitly.
 
 ### More inventory policies
 

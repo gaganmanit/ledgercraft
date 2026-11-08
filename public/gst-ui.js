@@ -1,3 +1,4 @@
+import { amountOnlyService } from "/gst-line-basis.js";
 import { tallyInvoiceReferences } from "/tally-invoice-references.js";
 import { formatINR, parseRupees, todayISO } from "/money.js";
 
@@ -837,7 +838,7 @@ function documentMarkup(invoice, helpers) {
   ].filter(([, value]) => value);
   const rate = (row, key) => key === "cessPaise" ? decimal(row.cessRateBps) : key === "igstPaise" ? decimal(row.gstRateBps) : String(row.gstRateBps / 200);
   const taxCells = row => components.map(([, key]) => row[key] ? `<td class="figure">${money(row[key])}<small class="gst-rate">${esc(rate(row, key))}%</small></td>` : '<td class="figure quiet">—</td>').join("");
-  const itemRows = invoice.items.map((row, index) => `<tr><td class="gst-num">${index + 1}</td><th scope="row">${esc(row.name)}${row.supplyStatus && row.supplyStatus !== "taxable" ? `<small class="gst-detail">${esc(STATUS_NAMES[row.supplyStatus] || row.supplyStatus)}</small>` : ""}</th><td class="code">${esc(row.hsnSac)}</td><td class="gst-num">${esc(row.quantity)} ${esc(row.unit || "")}</td><td class="figure">${money(row.unitPricePaise)}</td>${showDiscount ? `<td class="figure">${money(row.discountPaise)}</td>` : ""}<td class="figure">${money(row.taxablePaise)}</td>${taxCells(row)}<td class="figure">${money(row.totalPaise)}</td></tr>`).join("");
+  const itemRows = invoice.items.map((row, index) => `<tr><td class="gst-num">${index + 1}</td><th scope="row">${esc(row.name)}${row.supplyStatus && row.supplyStatus !== "taxable" ? `<small class="gst-detail">${esc(STATUS_NAMES[row.supplyStatus] || row.supplyStatus)}</small>` : ""}</th><td class="code">${esc(row.hsnSac)}</td><td class="gst-num">${amountOnlyService(invoice, index) ? "Amount only" : `${esc(row.quantity)} ${esc(row.unit || "")}`}</td><td class="figure">${amountOnlyService(invoice, index) ? '<span class="quiet">—</span>' : money(row.unitPricePaise)}</td>${showDiscount ? `<td class="figure">${money(row.discountPaise)}</td>` : ""}<td class="figure">${money(row.taxablePaise)}</td>${taxCells(row)}<td class="figure">${money(row.totalPaise)}</td></tr>`).join("");
   const columns = 7 + (showDiscount ? 1 : 0) + components.length;
   const totalRow = `<tr class="total"><th colspan="${showDiscount ? 6 : 5}" scope="row">Total</th><td class="figure">${money(totals.taxablePaise)}</td>${components.map(([, key]) => `<td class="figure">${money(totals[key])}</td>`).join("")}<td class="figure">${money(totals.totalPaise)}</td></tr>`;
   const payable = invoice.reverseCharge ? invoice.partyDuePaise : totals.totalPaise;

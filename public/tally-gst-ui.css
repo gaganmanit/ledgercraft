@@ -32,3 +32,11 @@
   .tally-gst-invoice > summary::before { content: none; }
   .tally-gst-invoice { break-inside: avoid; }
 }
+
+/* Service lines on Tally invoices */
+.tally-gst-review [data-tally-gst-page] { font-size: .85rem; }
+.tally-gst-service { margin-block: 1rem; padding: 1rem 0; border-block-start: 1px solid var(--rule); min-width: 0; }
+.tally-gst-service h4 { margin-block: .5rem; }
+.tally-gst-service > p, .tally-service-completion p { overflow-wrap: anywhere; }
+.tally-service-completion > label { display: grid; gap: .35rem; }
+.tally-service-facts { margin-block: .5rem; }

@@ -1,0 +1,49 @@
+import assert from 'node:assert/strict';
+import {runNative} from './native-command.mjs';
+import {createHash} from 'node:crypto';
+import {cp,mkdtemp,mkdir,readFile,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const sourceRoot=path.resolve(process.env.LEDGERCRAFT_NATIVE_BOOK_RESOURCES||process.env.FINANCER_NATIVE_BOOK_RESOURCES||root);
+const output=path.resolve(process.argv[2]||path.join(root,'output','tally-service-native-proof'));
+const scratch=await mkdtemp(path.join(tmpdir(),'ledgercraft-service-native-'));
+await mkdir(output,{recursive:true});
+const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+let server;
+try{
+ const frozen=path.join(scratch,'source');await mkdir(frozen);
+ for(const name of ['package.json','server.js','lib','public'])await cp(path.join(sourceRoot,name),path.join(frozen,name),{recursive:true});
+ const {start}=await import(pathToFileURL(path.join(frozen,'server.js'))),{previewTally}=await import(pathToFileURL(path.join(frozen,'lib/tally-import.js')));
+ server=await start({dataDir:path.join(scratch,'data')});const base=`http://127.0.0.1:${server.address().port}`;
+ const api=async route=>{const r=await fetch(base+route),d=await r.json();assert.equal(r.ok,true,JSON.stringify(d));return d;};
+ const source=path.join(root,'test/fixtures/tally-service-cycle.xml'),fixture=await readFile(source);
+ const baseline=previewTally([{name:path.basename(source),base64:fixture.toString('base64')}],{companyName:'Synthetic service native proof',booksFrom:'2026-04-01'});assert.equal(baseline.canCommit,true,JSON.stringify(baseline.issues));assert.equal(baseline.vouchers.length,4);
+ const config=path.join(scratch,'fixture.json');await writeFile(config,JSON.stringify({base,source,output}));
+ const swift=path.join(scratch,'service-ui.swift'),executable=path.join(scratch,'service-ui');await cp(path.join(root,'test/tally-service-gst-ui.swift'),swift);
+ await runNative(['/usr/bin/swiftc','-swift-version','5',swift,'-o',executable,'-framework','AppKit','-framework','WebKit'],root);await runNative([executable,config],root);
+ const native=JSON.parse(await readFile(path.join(output,'native-results.json'),'utf8')),saved=await api(`/api/companies/${native.company}`),restored=await api(`/api/companies/${native.restoredCompany}`);
+ const byNumber=number=>saved.vouchers.find(v=>v.number===number),mp=byNumber('MP-202'),pv=byNumber('PV-201'),sv=byNumber('SV-101');
+ assert.equal(saved.vouchers.filter(v=>v.gst?.tallyOrigin).length,4);assert.equal(saved.vouchers.filter(v=>v.gst).length,5);
+ for(const number of ['SV-101','PV-201','MS-102','MP-202']){const original=baseline.vouchers.find(v=>v.number===number),current=byNumber(number);assert.ok(original&&current,number);assert.deepEqual(current.lines,original.lines);assert.equal(current.type,original.type);}
+ for(const invoice of [mp.gst,pv.gst,sv.gst]){assert.equal(invoice.tallyOrigin.version,4);assert.ok(invoice.items.filter(i=>i.kind==='service').every(i=>i.unit==='OTH'&&i.quantity==='1'&&i.gstRateBps===1800&&/^99\d{4}$/.test(i.hsnSac)));assert.ok(invoice.tallyOrigin.serviceItems.every(row=>row.sourceLedgerId&&Number.isInteger(row.invoiceLineIndex)));}
+ assert.equal(mp.gst.totals.taxablePaise,140000);assert.equal(mp.gst.totals.cgstPaise,12600);assert.equal(mp.gst.totals.sgstPaise,12600);assert.equal(mp.gst.totals.totalPaise,165200);assert.equal(mp.gst.receivedDate,'2026-04-11');assert.equal(mp.gst.items[0].kind,'goods');assert.equal(mp.gst.items[0].quantity,'3');assert.equal(mp.gst.items[0].hsnSac,'8541');
+ const mixedReview=mp.gst.tallyOrigin.serviceItems[0];assert.equal(mixedReview.completionReview.status,'confirmed');assert.equal(mixedReview.completionReview.date,'2026-04-15');
+ assert.equal(pv.gst.stockEffect,'none');assert.equal(pv.gst.tallyOrigin.stockMode,'financial-only');assert.ok(!pv.gst.receivedDate);assert.equal(pv.gst.items.length,2);assert.equal(pv.gst.totals.taxablePaise,100000);assert.equal(pv.gst.totals.cgstPaise,9000);assert.equal(pv.gst.totals.sgstPaise,9000);
+ const pureReviews=pv.gst.tallyOrigin.serviceItems,pending=pureReviews.find(row=>row.completionReview.status==='pending'),confirmed=pureReviews.find(row=>row.completionReview.status==='confirmed');assert.ok(pending);assert.equal(pending.completionReview.date,undefined);assert.equal(confirmed.completionReview.date,'2026-04-07');
+ assert.equal(sv.gst.stockEffect,'none');assert.equal(sv.gst.items.length,2);assert.equal(sv.gst.totals.taxablePaise,150000);assert.equal(sv.gst.totals.cgstPaise,13500);assert.equal(sv.gst.totals.sgstPaise,13500);assert.ok(sv.gst.tallyOrigin.serviceItems.every(row=>row.completionReview===undefined));
+ const masters=saved.company.gst.items;assert.equal(masters.filter(i=>i.kind==='service').length,4);assert.equal(masters.find(i=>i.name==='Professional Fees').gstRateBps,1200);assert.equal(masters.find(i=>i.name==='Consulting Income').gstRateBps,1200);
+ assert.ok(mp.gst.tallyOrigin.taxFactReview.some(row=>row.field.endsWith(':gstRateBps')&&row.chosenValue===1800&&row.localMasterValue===1200));
+ const itcRecords=saved.company.gst.itc.records;assert.equal(itcRecords.length,1);const itc=itcRecords[0];assert.equal(itc.invoiceId,pv.id);assert.equal(itc.components.cgstPaise,9000);assert.equal(itc.components.sgstPaise,9000);assert.ok(itc.evidence.serviceReceipts.some(r=>r.sourceLineId===pending.sourceLineId&&r.sourceLedgerId===pending.sourceLedgerId&&r.received&&r.date==='2026-04-17'&&r.reference.includes('Professional Fees')));
+ const expectedVouchers=5+(itc.voucherId?1:0);assert.equal(saved.vouchers.length,expectedVouchers);if(itc.voucherId){const journal=saved.vouchers.find(v=>v.id===itc.voucherId);assert.ok(journal?.gstItc);assert.equal(journal.lines.filter(l=>l.dc==='Dr').reduce((n,l)=>n+l.paise,0),journal.lines.filter(l=>l.dc==='Cr').reduce((n,l)=>n+l.paise,0));}
+ assert.equal(saved.company.stock.masters.length,1);assert.equal(saved.company.stock.masters[0].name,'Widget');for(const sourceInvoice of [pv,sv])assert.equal(saved.company.stock.journals.filter(j=>j.accountingVoucherId===sourceInvoice.id).length,0);
+ const sourceStock=saved.company.stock.journals.filter(j=>j.accountingVoucherId===mp.id);assert.equal(sourceStock.length,1);assert.equal(sourceStock[0].lines.length,1);assert.equal(sourceStock[0].lines[0].quantity,'3');assert.equal(sourceStock[0].lines[0].itemId,saved.company.stock.masters[0].id);
+ const returned=saved.vouchers.find(v=>v.gst?.type==='Credit Note'&&!v.gst.tallyOrigin);assert.ok(returned);assert.equal(returned.gst.originalInvoiceId,mp.id);assert.equal(returned.gst.stockEffect,'quantity');assert.deepEqual(returned.gst.originalLineMap,[0]);assert.equal(returned.gst.items.length,1);assert.equal(returned.gst.items[0].kind,'goods');assert.equal(returned.gst.items[0].quantity,'1');assert.equal(returned.gst.totals.totalPaise,47200);
+ const stock=await api(`/api/companies/${native.company}/stock?to=2026-04-30`),restoredStock=await api(`/api/companies/${native.restoredCompany}/stock?to=2026-04-30`);assert.equal(stock.items.length,1);assert.equal(stock.items[0].quantity,'10');assert.equal(restoredStock.items[0].quantity,'10');assert.equal(restored.vouchers.length,saved.vouchers.length);assert.deepEqual(restored.vouchers,saved.vouchers);assert.deepEqual(restored.company.gst.itc.records,itcRecords);
+ const itcReport=await api(`/api/companies/${native.company}/gst/itc?to=2026-04-30`),receipt=itcReport.documents.find(d=>d.id===pv.id).lines.find(l=>l.serviceReceipt?.sourceLineId===pending.sourceLineId).serviceReceipt;assert.equal(receipt.status,'confirmed');assert.equal(receipt.date,'2026-04-17');assert.equal(receipt.basis,'itc-review');
+ assert.deepEqual(await readFile(path.join(output,'service-original.xml')),fixture);assert.equal(native.activationRequests,4);assert.equal(native.mappingRequests.length,4);assert.equal(native.itcRequests.length,1);assert.equal(native.manualRequests.length,1);
+ const files=['server.js','public/tally-gst-ui.js','public/tally-gst-ui.css','public/gst-ui.js','public/gst-itc-ui.js','lib/tally-gst.js','lib/tally-gst-services.js','lib/tally-service-source.js','lib/tally-gst-facts.js','lib/gst.js','lib/gst-itc.js','lib/stock-engine.js','lib/tally-stock.js'];const hashes={};for(const name of files)hashes[name]=digest(await readFile(path.join(frozen,name)));for(const name of ['test/tally-service-gst-ui.swift','tools/verify-tally-service-native.mjs'])hashes[name]=digest(await readFile(path.join(root,name)));
+ await writeFile(path.join(output,'backend-results.json'),JSON.stringify({passed:true,fixture:'independently authored synthetic service and mixed source cycle',fixtureSHA256:digest(fixture),originalVouchers:4,vouchers:saved.vouchers.length,sourceGstDocuments:4,manualGoodsReturn:1,itcRecords:1,itcBalancingVouchers:itc.voucherId?1:0,unchangedOriginalPostings:true,serviceMasters:4,stockMasters:1,physicalStockAfterSource:'11',physicalStockAfterGoodsReturn:stock.items[0].quantity,goodsOnlySourceStock:true,serviceStockMovements:0,serviceSnapshotRateBps:1800,divergentCurrentMasterRateBps:1200,mixedGoodsReceivedDate:mp.gst.receivedDate,mixedServiceCompletionDate:mixedReview.completionReview.date,purePurchaseSourcePendingDate:null,laterServiceReceipt:receipt,itcComponents:itc.components,restoredVouchers:restored.vouchers.length,sourceBytesRestored:true,sourceSHA256ByFile:hashes},null,2));
+ for(const name of ['failure.txt','failure.png'])await rm(path.join(output,name),{force:true});console.log(`Native service/mixed proof saved to ${output}`);
+}finally{if(server){server.closeIdleConnections();await new Promise(resolve=>server.close(resolve));}await rm(scratch,{recursive:true,force:true});}

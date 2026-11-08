@@ -4,7 +4,7 @@ Ledgercraft is a local accounting app for company books, Indian GST billing and 
 
 ## Download for Mac
 
-[Download Ledgercraft 1.6.0 for Apple Silicon](https://github.com/gaganmanit/ledgercraft/releases/download/v1.6.0/Ledgercraft-1.6.0-macOS-arm64.dmg). Open the image and drag Ledgercraft.app into your Applications folder. It runs on macOS 13.5 or later. The app is ad hoc signed and has no Apple notarization.
+[Download Ledgercraft 1.7.0 for Apple Silicon](https://github.com/gaganmanit/ledgercraft/releases/download/v1.7.0/Ledgercraft-1.7.0-macOS-arm64.dmg). Open the image and drag Ledgercraft.app into your Applications folder. It runs on macOS 13.5 or later. The app is ad hoc signed and has no Apple notarization.
 
 ## Get started
 
@@ -92,6 +92,8 @@ For a workbook containing billed quantities without actual quantities, physical 
 **GST from Tally** links supported domestic goods sales and purchases to their original postings and stock movements. For a purchase, select the business registration and supplier’s creditor ledger. Review the supplier invoice number and date, place of supply, actual and billed quantities, HSN, rate and original input-tax accounts. The Tally voucher number and posting date stay in the books.
 
 An activated purchase starts with ITC pending. Match the supplier’s document to GSTR-2B and record a dated decision in **Purchase ITC review**. A purchase entered in April can match its supplier’s March invoice while the ledger continues to show the April entry. An accounting-only purchase remains available in the day book even when the source supplies too little detail to create a GST invoice.
+
+A domestic service invoice can contain several service ledgers. In **GST from Tally**, map each one to its GST service master and review the dated SAC and rate. A mixed invoice also shows the goods and their stock movement. For an accrued purchase you can leave a service pending and record its acceptance date and evidence when claiming its input tax. Goods that already qualify can be reviewed on their own.
 
 For an imported credit or debit note, choose the original invoice and the affected lines. A purchase return entered as a buyer's debit note can be matched to the supplier's credit note in GSTR-2B. A financial adjustment changes values only. A physical return also records the goods movement at its linked cost.
 

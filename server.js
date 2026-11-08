@@ -42,6 +42,7 @@ const MIME = {
 const browserModules = {
   "/voucher-entry.js": path.join(root, "lib", "voucher-entry.js"),
   "/money.js": path.join(root, "lib", "money.js"),
+  "/gst-line-basis.js": path.join(root, "lib", "gst-line-basis.js"),
 };
 const immutable = /\.(woff2|ttf|png)$/;
 

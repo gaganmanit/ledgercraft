@@ -15,6 +15,23 @@ async function files() {
   return Promise.all(["StockMasters.xml", "StockVouchers.xml"].map(async name => file(name, await readFile(new URL(`fixtures/tally/${name}`, import.meta.url)))));
 }
 const archiveOf = preview => ({ format: "financer-tally-archive", version: 1, company: preview.company, vouchers: preview.vouchers, sources: preview.sources, records: preview.records, sourceBookHash: null });
+test("new mixed invoices post independently proven goods stock and old archives retain their earlier baseline",async()=>{
+  const name="tally-service-cycle.xml", xml=await readFile(new URL("./fixtures/"+name,import.meta.url),"utf8");
+  const options={companyName:"Service baseline compatibility",booksFrom:"2026-04-01"};
+  const modern=previewTally([file(name,xml)],options);
+  assert.equal(modern.company.stock.tally.version,2);
+  assert.deepEqual(modern.company.stock.journals.map(j=>j.number),["MS-102","MP-202"]);
+  assert.deepEqual(restoreTallyArchive(archiveOf(modern)).company.stock,modern.company.stock);
+  const older=previewTally([file(name,xml)],options,1);
+  assert.equal(older.company.stock.tally.version,1);
+  assert.equal(older.company.stock.tally.baselineHash,"ac736dae8859e8726560855f6456f211d6cbbc813636f53dcd62ecd282e07ee4");
+  assert.deepEqual(older.company.stock.journals.map(j=>j.number),["MP-202"]);
+  assert.deepEqual(restoreTallyArchive(archiveOf(older)).company.stock,older.company.stock);
+  const mismatch=xml.replace(/(<ACCOUNTINGALLOCATIONS.LIST><LEDGERNAME>Goods Sales<\/LEDGERNAME>.*?<AMOUNT>)1000.00/,"$1"+"999.00");
+  assert.notEqual(mismatch,xml);
+  const held=previewTally([file(name,mismatch)],options);
+  assert.ok(held.company.stock.tally.sourceGaps.some(g=>g.message.includes("MS-102")));
+});
 function edit(source, name, change) {
   return source.map(entry => entry.name === name ? file(name, change(Buffer.from(entry.base64, "base64").toString("utf8"))) : entry);
 }
