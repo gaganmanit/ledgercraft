@@ -622,3 +622,71 @@ a[aria-disabled="true"] { opacity: .45; cursor: not-allowed; pointer-events: non
   .form-message, .pill.info { display: none !important; }
   .details-list details { display: block; }
 }
+
+/* ---------- Pass 3: keyboard, export, paging and review ---------- */
+
+.cover-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.sheet-tools .sheet-actions { display: flex; align-items: center; gap: 8px; }
+.ledger-tools label { flex: 0 1 26rem; }
+
+/* Ledger picker: a combobox in front of the hidden ledger select in each voucher line. */
+.ledger-picker { position: relative; }
+.voucher-table .ledger-picker input[role="combobox"] { padding-right: 32px; background-image: linear-gradient(45deg, transparent 50%, var(--ink-3) 50%), linear-gradient(135deg, var(--ink-3) 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+.voucher-table .ledger-picker input[role="combobox"][aria-expanded="true"] { background-color: var(--sheet); border-bottom-color: var(--blue); }
+.ledger-popup { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; width: max(100%, 26rem); max-width: min(40rem, 90vw); padding: 4px; background: var(--sheet); border: 1px solid var(--rule-2); border-radius: var(--r-2); box-shadow: var(--shadow); }
+.ledger-list { list-style: none; margin: 0; padding: 0; max-height: min(20rem, 50vh); overflow-y: auto; overscroll-behavior: contain; }
+.ledger-option { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: baseline; padding: 6px 10px; border-radius: var(--r-1); cursor: pointer; font-size: 14px; line-height: 1.35; }
+.ledger-option:hover { background: var(--field); }
+.ledger-option[aria-selected="true"] { background: var(--blue-soft); }
+.ledger-option-name { grid-column: 1; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+.ledger-option-path { grid-column: 1; font-size: 13px; overflow-wrap: anywhere; }
+.ledger-option-balance { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 14px; font-weight: 500; }
+.ledger-option-create { display: block; color: var(--blue); font-weight: 500; }
+.ledger-option + .ledger-option-create { margin-top: 4px; box-shadow: inset 0 1px 0 var(--rule); padding-top: 9px; }
+.ledger-more { margin: 4px 10px 2px; font-size: 13px; }
+.ledger-create { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; margin: 8px 0 6px; padding: 10px 12px 12px; background: var(--field); border: 1px solid var(--rule-2); border-radius: var(--r-1); }
+.ledger-create-title { grid-column: 1 / -1; margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+.ledger-create label { font-size: 13px; }
+.voucher-table .ledger-create input, .voucher-table .ledger-create select { min-height: var(--control); background-color: var(--sheet); border: 1px solid var(--rule-2); border-radius: var(--r-1); }
+.voucher-table .ledger-create select { padding-right: 32px; background-image: linear-gradient(45deg, transparent 50%, var(--ink-2) 50%), linear-gradient(135deg, var(--ink-2) 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+.voucher-table .ledger-create input:focus-visible, .voucher-table .ledger-create select:focus-visible { border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
+.ledger-create-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.ledger-create-actions button { min-height: var(--control); padding: 4px 12px; }
+.ledger-create .form-message { grid-column: 1 / -1; margin: 0; }
+
+/* Paging under long tables. */
+.table-more { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 12px; }
+.table-more p { margin: 0; font-size: 13px; }
+.table-more button.ghost { min-height: var(--control); padding: 4px 12px; }
+
+/* Owner review: things that need attention. */
+.review-attention .attention-rule { list-style: none; margin: 8px 0 0; }
+.review-attention .attention-rule li { max-width: 70ch; }
+.review-attention [data-attention] > p { margin: 8px 0 0; font-size: 14px; }
+.new-voucher-menu a { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.new-voucher-menu kbd { background: transparent; border: 0; padding: 0; color: var(--ink-3); }
+
+/* Keyboard shortcuts dialog, built like the finder. */
+.shortcuts { width: min(560px, 92vw); margin: 10vh auto 0; padding: 0; background: var(--sheet); color: var(--ink); border: 1px solid var(--rule-2); border-radius: var(--r-2); box-shadow: var(--shadow); overflow: hidden; }
+.shortcuts[open] { animation: dialog-fade .14s ease-out; }
+.shortcuts::backdrop { background: rgba(20, 16, 18, .4); }
+.shortcuts-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 16px 10px; border-bottom: 1px solid var(--rule); }
+.shortcuts-head h2 { margin: 0; font-size: 18px; }
+.shortcuts-head button { min-height: 26px; padding: 2px 8px; font: 12px var(--mono); }
+.shortcuts-body { max-height: 70vh; overflow-y: auto; padding: 0 16px 16px; }
+.shortcuts-body h3 { margin: 16px 0 4px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.shortcuts-body dl { margin: 0; }
+.shortcuts-body dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 6px 0; border-bottom: 1px solid var(--rule); font-size: 14px; }
+.shortcuts-body dd { margin: 0; white-space: nowrap; }
+.shortcuts-body kbd { font-size: 13px; }
+.shortcuts-body > p { margin-top: 12px; font-size: 13px; }
+@keyframes dialog-fade { from { opacity: 0; } to { opacity: 1; } }
+
+@media (max-width: 760px) {
+  .ledger-create { grid-template-columns: 1fr; }
+  .ledger-popup { width: 100%; max-width: none; }
+  .shortcuts { margin-top: 4vh; }
+}
+@media print {
+  .table-more, .ledger-popup, .ledger-create, .shortcuts, .cover-buttons, .review-attention [aria-busy] { display: none !important; }
+}

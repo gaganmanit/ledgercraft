@@ -1,6 +1,9 @@
 import { nextLineAction } from "/voucher-entry.js";
 import { viewBookTool } from "/book-tools.js";
 import { installFinder } from "/finder.js";
+import { balancesFromTrial, createLedgerDirectory, installLedgerPicker, ledgerControl, notifyDirectory } from "/ledger-picker.js";
+import { csvFileName, downloadCsv, dueSentence, gstCalendar, monthName, pagingNote, setExportRows, sheetModel, toCsv } from "/table-export.js";
+import { installShortcuts, voucherKeyLabel, voucherKeyShortcut } from "/shortcuts.js";
 import { formatINR, fyLabel, parseRupees, todayISO } from "/money.js";
 
 const root = document.querySelector("#root");
@@ -27,6 +30,10 @@ const HINT = {
 };
 
 let renderToken = 0;
+const PAGE_ROWS = 200;
+/* A paged table registers how to show every row, so that printing never stops at the first page. */
+let expandForPrint = null;
+let shortcuts = { mac: true, open() {} };
 
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
@@ -59,7 +66,7 @@ async function api(path, options = {}) {
 }
 
 function focusNext(form, from) {
-  const controls = [...form.querySelectorAll("input, select, textarea, button")].filter(el => !el.disabled && el.offsetParent !== null);
+  const controls = [...form.querySelectorAll("input, select, textarea, button")].filter(el => !el.disabled && el.offsetParent !== null && el.getAttribute("aria-hidden") !== "true");
   const next = controls[controls.indexOf(from) + 1];
   if (next) next.focus();
   if (next && typeof next.select === "function" && next.tagName === "INPUT") next.select();
@@ -157,7 +164,7 @@ function page({ company, title, lede, error, status, body }) {
   return `<div class="app">
     <aside class="cover"><a class="brand" href="${book}"><span class="brand-mark" aria-hidden="true"></span>Ledgercraft</a>
       <nav aria-label="Book navigation">${nav}</nav>
-      <div class="cover-foot"><button type="button" class="theme-toggle" data-theme-toggle>${themeLabel()}</button><p><span class="local-dot" aria-hidden="true"></span>Books stay on this Mac</p></div>
+      <div class="cover-foot"><div class="cover-buttons"><button type="button" class="theme-toggle" data-theme-toggle>${themeLabel()}</button><button type="button" class="theme-toggle" data-shortcuts aria-keyshortcuts="?">Keyboard shortcuts</button></div><p><span class="local-dot" aria-hidden="true"></span>Books stay on this Mac</p></div>
     </aside>
     <div class="pages"><header class="topbar">
       <a class="company-switch" href="#/"><strong>${esc(company?.name || "Companies")}</strong><span>${company ? (specimen ? "Specimen company" : "Switch company") : "Choose a company to open its books"}</span></a>
@@ -290,7 +297,7 @@ function bindDifference(form) {
 }
 
 function periodBar(range) {
-  return `<div class="sheet-tools"><span class="period-echo">${esc(dateLabel(range.from))} to ${esc(dateLabel(range.to))} <button type="button" class="link" data-focus-period>Change period</button></span><button type="button" class="ghost" data-print-sheet>Print</button></div><p class="only-print">${esc(dateLabel(range.from))} to ${esc(dateLabel(range.to))}</p>`;
+  return `<div class="sheet-tools"><span class="period-echo">${esc(dateLabel(range.from))} to ${esc(dateLabel(range.to))} <button type="button" class="link" data-focus-period>Change period</button></span><span class="sheet-actions"><button type="button" class="ghost" data-export-csv>Download CSV</button><button type="button" class="ghost" data-print-sheet>Print</button></span></div><p class="only-print">${esc(dateLabel(range.from))} to ${esc(dateLabel(range.to))}</p>`;
 }
 function bindPeriod() {
   /* The reporting period is set once in the top bar; see the delegated change handler below. */
@@ -299,6 +306,30 @@ function bindPeriod() {
 function figure(paise, dc = "") {
   if (!paise) return `<td class="figure quiet">\u2014</td>`;
   return `<td class="figure">${esc(formatINR(paise))}${dc ? `<span class="dc">${esc(dc)}</span>` : ""}</td>`;
+}
+
+function moreRows() {
+  return `<div class="table-more" data-table-more hidden><p class="quiet" data-more-note></p><button type="button" class="ghost" data-more-rows>Show ${PAGE_ROWS} more rows</button></div>`;
+}
+
+/* Renders the first `limit` rows of a list into a tbody and keeps the "Show more" control honest. */
+function pagedTable({ table, rows, rowHtml, prefix = () => "", suffix = "", onPage = () => {} }) {
+  let limit = PAGE_ROWS;
+  let current = rows;
+  const more = table.closest("#sheet").querySelector("[data-table-more]");
+  const body = table.tBodies[0];
+  const paint = () => {
+    const shown = current.slice(0, limit);
+    body.innerHTML = prefix(shown) + shown.map(rowHtml).join("") + suffix;
+    more.hidden = current.length <= limit;
+    more.querySelector("[data-more-note]").textContent = pagingNote(Math.min(limit, current.length), current.length);
+    onPage(shown);
+  };
+  more.querySelector("[data-more-rows]").addEventListener("click", () => { limit += PAGE_ROWS; paint(); });
+  setExportRows(table, () => prefix(current) + current.map(rowHtml).join("") + suffix);
+  expandForPrint = () => { if (current.length > limit) { limit = current.length; paint(); } };
+  paint();
+  return { update(next) { current = next; limit = PAGE_ROWS; paint(); } };
 }
 
 async function viewIndex(token, error = "") {
@@ -420,15 +451,84 @@ async function viewHome(token, id) {
   const balance = (label, amount, route, suffix = "") => `<a class="review-balance" href="${book}/${route}"><span>${esc(label)}</span><strong>${esc(money(amount))}${suffix ? ` <small>${esc(suffix)}</small>` : ""}</strong></a>`;
   document.title = company.name + " · Ledgercraft";
   root.innerHTML = page({ company, folio: "Or", kicker: "Owner review", title: "Owner review", status: takeFlash(),
-    body: `<div class="review-intro"><p>Balances as of <strong>${esc(dateLabel(range.to))}</strong></p><details class="new-voucher-menu"><summary class="ink-link">New voucher</summary><div>${TYPES.map(type=>`<a href="${book}/v/${encodeURIComponent(type)}">${esc(type)}</a>`).join("")}</div></details></div>
+    body: `<div class="review-intro"><p>Balances as of <strong>${esc(dateLabel(range.to))}</strong></p><details class="new-voucher-menu"><summary class="ink-link">New voucher</summary><div>${TYPES.map(type=>`<a href="${book}/v/${encodeURIComponent(type)}" aria-keyshortcuts="${esc(voucherKeyShortcut(type))}">${esc(type)} <kbd aria-hidden="true">${esc(voucherKeyLabel(type, shortcuts.mac))}</kbd></a>`).join("")}</div></details></div>
       <div class="balance-strip">${balance("Cash & bank", review.cashBank, "cash-bank", review.cashBank < 0 ? "Cr" : "")}
       ${balance(review.receivable < 0 ? "Customer advances" : "Net receivables", review.receivable, "outstanding/debtors")}
       ${balance(review.payable < 0 ? "Supplier advances" : "Net payables", review.payable, "outstanding/creditors")}</div>
       <div class="profit-rule"><span>${review.netProfit < 0 ? "Net loss" : "Net profit"} <small>${esc(dateLabel(range.from))} – ${esc(dateLabel(range.to))}</small></span><a href="${book}/pl">${review.netProfit === null ? "Stock valuation pending" : esc(money(review.netProfit))}</a></div>
       ${review.workbookOpeningScope ? `<p class="quiet"><a href="${book}/tally-source">Tally workbook basis</a> · ${esc(review.workbookOpeningScope.message)}</p>` : ""}
       ${review.difference ? `<p class="alert"><a href="${book}/tb">Opening balances differ by ${esc(money(review.difference))}. Review trial balance</a></p>` : ""}
+      <section class="review-attention" aria-labelledby="attention-title"><div class="section-title"><h2 id="attention-title">Needs attention</h2></div><div data-attention aria-live="polite" aria-busy="true"><p class="quiet">Checking GST returns, receivables, bank statements, purchase credit and stock.</p></div></section>
       <section class="latest"><div class="section-title"><h2>Recent vouchers</h2></div>
       ${review.latest.length ? `<table><thead><tr><th>Date</th><th>Voucher</th><th>Particulars</th><th class="figure">Amount (₹)</th></tr></thead><tbody>${review.latest.map(v => `<tr><td class="date-cell">${esc(dateLabel(v.date))}</td><td><a class="voucher-ref" href="${book}/v/${encodeURIComponent(v.type)}/${encodeURIComponent(v.id)}">${esc(v.number)}</a></td><td>${esc(v.narration || v.particulars)}</td><td class="figure">${esc(formatINR(v.paise))}</td></tr>`).join("")}</tbody></table>` : '<p class="empty">No vouchers in this period.</p>'}</section>` });
+  fillAttention(token, id, range);
+}
+
+const countLabel = (count, one, many = one + "s") => `${count.toLocaleString("en-IN")} ${count === 1 ? one : many}`;
+const TAX_HEADS = ["cgst", "sgst", "utgst", "igst", "cess"];
+
+/* Each check fails soft: a failed request leaves its line out and is named once at the end. */
+async function fillAttention(token, id, range) {
+  const base = "/api/companies/" + encodeURIComponent(id);
+  const book = "#/c/" + encodeURIComponent(id);
+  const money = paise => "₹" + formatINR(paise);
+  const today = todayISO();
+  const checks = [
+    ["GST returns", async () => {
+      const { registrations = [] } = await api(base + "/gst/registrations");
+      if (!registrations.length) return [];
+      const { invoices = [] } = await api(base + "/gst");
+      return registrations.flatMap(registration => {
+        const calendar = gstCalendar(invoices.filter(invoice => invoice.registrationId === registration.id).map(invoice => invoice.date), today);
+        if (!calendar) return [];
+        const href = `${book}/gst-returns?${new URLSearchParams({ registration: registration.id, month: calendar.month })}`;
+        const which = registrations.length > 1 ? ` for ${registration.gstin}` : "";
+        return calendar.returns.map(item => `<a href="${esc(href)}">${esc(item.form)} for ${esc(monthName(calendar.month))}</a>${esc(which)} ${esc(dueSentence(item.days, item.due))}.`);
+      });
+    }],
+    ["receivables", async () => {
+      const report = await api(`${base}/reconciliation/bills?asOf=${encodeURIComponent(range.to)}`);
+      const overdue = (report.rows || []).filter(row => row.side === "receivable" && row.openPaise > 0 && row.daysOverdue > 30);
+      if (!overdue.length) return [];
+      const amount = overdue.reduce((sum, row) => sum + row.openPaise, 0);
+      const parties = new Set(overdue.map(row => row.ledgerId)).size;
+      return [`<a href="${book}/bill-outstanding">${esc(money(amount))} receivable from ${esc(countLabel(parties, "party", "parties"))}</a> is more than 30 days overdue.`];
+    }],
+    ["bank statements", async () => {
+      const { statements = [] } = await api(`${base}/reconciliation/bank`);
+      if (!statements.length) return [];
+      const reports = await Promise.all(statements.map(statement => api(`${base}/reconciliation/bank?statementId=${encodeURIComponent(statement.id)}`)));
+      const open = reports.reduce((sum, report) => sum + (report.rows || []).filter(row => !row.matched).length, 0);
+      if (!open) return [];
+      return [`<a href="${book}/bank-reconciliation">${esc(countLabel(open, "bank statement row"))}</a> ${open === 1 ? "has" : "have"} no match in the books yet.`];
+    }],
+    ["purchase credit", async () => {
+      const report = await api(`${base}/gst/itc?to=${encodeURIComponent(range.to)}`);
+      const total = row => TAX_HEADS.reduce((sum, head) => sum + (row?.[head + "Paise"] || 0), 0);
+      const awaiting = (report.documents || []).reduce((sum, document) => sum + total(document.balances?.unreviewed) + total(document.balances?.unclaimed), 0);
+      if (!awaiting) return [];
+      return [`<a href="${book}/gst-itc">${esc(money(awaiting))} of purchase credit</a> is awaiting claim or review.`];
+    }],
+    ["stock", async () => {
+      const report = await api(`${base}/stock?${new URLSearchParams({ from: range.from, to: range.to })}`);
+      const flagged = (report.items || []).filter(row => row.complete === false || row.valuePaise == null).length;
+      const issues = new Set((report.issues || []).map(issue => issue.itemId || issue.sourceId || issue.code || issue.message)).size;
+      const count = Math.max(flagged, issues);
+      if (!count) return [];
+      return [`<a href="${book}/stock">${esc(countLabel(count, "stock item"))}</a> ${count === 1 ? "needs" : "need"} review.`];
+    }],
+  ];
+  const results = await Promise.allSettled(checks.map(([, run]) => run()));
+  if (!still(token)) return;
+  const target = root.querySelector("[data-attention]");
+  if (!target) return;
+  const items = results.flatMap(result => result.status === "fulfilled" ? result.value : []);
+  const failed = checks.filter((_, index) => results[index].status === "rejected").map(([name]) => name);
+  const unchecked = failed.length ? `Ledgercraft could not check ${failed.length > 1 ? failed.slice(0, -1).join(", ") + " and " + failed.at(-1) : failed[0]} just now.` : "";
+  target.removeAttribute("aria-busy");
+  target.innerHTML = items.length
+    ? `<ul class="attention-rule">${items.map(item => `<li>${item}</li>`).join("")}</ul>${unchecked ? `<p class="quiet">${esc(unchecked)}</p>` : ""}`
+    : `<p class="quiet">${failed.length ? `Nothing needs attention in the checks that ran. ${esc(unchecked)}` : "Nothing needs attention right now."}</p>`;
 }
 
 function groupPath(company, groupId) {
@@ -522,7 +622,7 @@ async function viewLedgers(token, id) {
     <td><button class="ghost" data-edit-ledger="${esc(ledger.id)}">Edit</button></td></tr>`).join("");
   root.innerHTML = page({ company, folio: "Ld", kicker: "Masters", title: "Ledgers",
     lede: "Open a ledger to review its entries, or edit its name, group and opening.",
-    body: `<label class="period">Find a ledger <input type="search" id="ledger-search" placeholder="Name or group" /></label>
+    body: `<div class="period ledger-tools"><label>Find a ledger <input type="search" id="ledger-search" placeholder="Name or group" /></label><button type="button" class="ghost" data-export-csv>Download CSV</button></div>
       <table><thead><tr><th>Ledger</th><th>Group path</th><th class="figure">Opening</th><th></th></tr></thead><tbody>${rows}</tbody></table>
       <form class="foot-form" id="ledger-form"><h2>Add a ledger</h2>
         <label>Name <input name="name" required minlength="2" maxlength="80" /></label>
@@ -632,10 +732,40 @@ async function viewVoucher(token, id, type, voucherId) {
       <p class="difference" aria-live="polite"></p><div class="actions"><button type="submit" data-pass>${existing ? "Save the voucher" : "Pass voucher"}</button>
       ${existing ? `<button type="button" class="ghost" id="duplicate">Duplicate as new</button><button type="button" class="danger" id="remove">Remove voucher</button>` : ""}</div>
       ${draft ? `<button type="button" class="ghost" id="discard-draft">Discard draft</button>` : ""}</div>
-      <p class="quiet">Return moves to the next field. ⌘ Return passes the voucher.</p></form>` });
+      <p class="quiet">Type a ledger name and press Return to choose it. Return moves to the next field. ⌘ Return passes the voucher. Press ? for every shortcut.</p></form>` });
   const form = document.querySelector("#voucher");
   let saving = false;
   const requestId = crypto.randomUUID();
+  const directory = createLedgerDirectory({
+    ledgers: company.ledgers.map(ledger => ({ id: ledger.id, name: ledger.name, groupId: ledger.groupId, path: groupPath(company, ledger.groupId) })),
+    groups: company.groups.map(group => ({ id: group.id, path: groupPath(company, group.id) })).sort((a, b) => a.path.localeCompare(b.path)),
+  });
+  const focusAmount = select => {
+    const row = select.closest("tr");
+    const debit = row?.querySelector("[name=debit]");
+    const target = debit && !debit.disabled ? debit : row?.querySelector("[name=credit]");
+    target?.focus();
+    target?.select();
+  };
+  const createLedger = async ({ name, groupId }) => {
+    const saved = await api(`/api/companies/${encodeURIComponent(id)}/ledgers`, { method: "POST", body: { name, groupId, openingPaise: 0, openingDc: "Dr" } });
+    const ledger = saved.company?.ledgers?.find(item => item.name.toLowerCase() === name.trim().toLowerCase());
+    if (!ledger) throw new Error("The ledger was saved but could not be found. Reload the voucher to use it.");
+    if (!company.ledgers.some(item => item.id === ledger.id)) company.ledgers.push(ledger);
+    if (!directory.ledgers.some(item => item.id === ledger.id)) directory.ledgers.push({ id: ledger.id, name: ledger.name, groupId: ledger.groupId, path: groupPath(company, ledger.groupId) });
+    for (const select of form.querySelectorAll("select[name=ledger]")) {
+      if (![...select.options].some(option => option.value === ledger.id)) select.insertAdjacentHTML("beforeend", `<option value="${esc(ledger.id)}">${esc(ledger.name)}</option>`);
+    }
+    return ledger;
+  };
+  const mountPickers = () => {
+    for (const select of form.querySelectorAll("select[name=ledger]")) installLedgerPicker(select, { directory, esc, formatINR, createLedger, afterChoose: focusAmount });
+  };
+  mountPickers();
+  const balanceTo = todayISO() < company.booksFrom ? company.booksFrom : todayISO();
+  api(`/api/companies/${encodeURIComponent(id)}/reports/trial-balance?from=${encodeURIComponent(company.booksFrom)}&to=${encodeURIComponent(balanceTo)}`)
+    .then(report => { if (!still(token)) return; directory.balances = balancesFromTrial(report); notifyDirectory(directory); })
+    .catch(() => { /* Balances are a convenience; the picker works without them. */ });
   bindDifference(form);
   const rememberDraft = () => {
     if (existing) return;
@@ -650,13 +780,13 @@ async function viewVoucher(token, id, type, voucherId) {
     if (saving || form.querySelector("#line-action").disabled) return;
     const body = form.querySelector("#lines");
     const { index, side, paise } = voucherLineAction(form);
-    if (index === body.rows.length) body.insertAdjacentHTML("beforeend", lineRow(company, {}, index));
+    if (index === body.rows.length) { body.insertAdjacentHTML("beforeend", lineRow(company, {}, index)); mountPickers(); }
     const row = body.rows[index];
     if (side) row.querySelector(`[name=${side}]`).value = formatINR(paise);
     bindDifference(form);
-    const ledger = row.querySelector("select");
+    const ledger = row.querySelector("select[name=ledger]");
     if (side && ledger.value) row.querySelector(`[name=${side}]`).select();
-    else ledger.focus();
+    else ledgerControl(row).focus();
   };
   form.querySelector("#line-action").addEventListener("click", lineAction);
   form.addEventListener("keydown", (event) => {
@@ -704,7 +834,7 @@ async function viewVoucher(token, id, type, voucherId) {
     try { await api(`/api/companies/${encodeURIComponent(id)}/vouchers/${encodeURIComponent(existing.id)}`, { method: "DELETE" }); location.hash = `#/c/${id}/daybook`; }
     catch (error) { button.disabled = false; showAlert(error.message, form); }
   });
-  if (!existing) form.querySelector("[name=ledger]")?.focus();
+  if (!existing) { const first = form.querySelector("#lines tr"); if (first) ledgerControl(first).focus(); }
 }
 
 async function viewDaybook(token, id) {
@@ -715,30 +845,31 @@ async function viewDaybook(token, id) {
   if (!still(token)) return;
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   const selectedType = TYPES.includes(params.get("type")) ? params.get("type") : "";
-  const rows = report.rows.map((row) => {
+  const entries = report.rows.map(row => ({ row, search: `${row.number} ${row.particulars} ${row.narration || ""}`.toLowerCase() }));
+  const rowHtml = ({ row }) => {
     const narration = row.narration || "";
-    return `<tr data-book-row data-type="${esc(row.type)}" data-search="${esc(`${row.number} ${row.particulars} ${narration}`.toLowerCase())}" data-paise="${row.paise}">
+    return `<tr data-book-row data-type="${esc(row.type)}">
       <td class="date-cell">${esc(dateLabel(row.date))}</td><td><a class="voucher-ref" href="#/c/${esc(id)}/v/${encodeURIComponent(row.type)}/${encodeURIComponent(row.id)}">${esc(row.number)}</a></td><td>${esc(row.type)}</td>
       <td>${esc(row.particulars)}${narration ? `<div class="quiet">${esc(narration)}</div>` : ""}</td><td class="figure">${esc(formatINR(row.paise))}</td></tr>`;
-  }).join("");
+  };
   document.title = `Day book · ${bundle.company.name}`;
   root.innerHTML = page({ company: bundle.company, folio: "Db", kicker: "Day book", title: "Day book",
     body: `${periodBar(range)}<div class="period"><label>Voucher type <select id="daybook-type"><option value="">All types</option>${TYPES.map((type) => `<option${type === selectedType ? " selected" : ""}>${esc(type)}</option>`).join("")}</select></label>
       <label>Search <input type="search" id="daybook-search" placeholder="Narration, ledger or voucher number" /></label></div>
-      <table><thead><tr><th>Date</th><th>No.</th><th>Type</th><th>Particulars</th><th class="figure">Amount</th></tr></thead><tbody>${rows}<tr id="daybook-empty" hidden><td colspan="5" class="quiet">No vouchers match this period and search.</td></tr></tbody><tfoot><tr class="total"><th colspan="4" id="daybook-count"></th><td class="figure" id="daybook-total"></td></tr></tfoot></table>` });
+      <table><thead><tr><th>Date</th><th>No.</th><th>Type</th><th>Particulars</th><th class="figure">Amount</th></tr></thead><tbody></tbody><tfoot><tr class="total"><th colspan="4" id="daybook-count"></th><td class="figure" id="daybook-total"></td></tr></tfoot></table>${moreRows()}` });
   bindPeriod(bundle.company);
+  const empty = `<tr id="daybook-empty" data-export-skip><td colspan="5" class="quiet">No vouchers match this period and search.</td></tr>`;
+  const table = root.querySelector("#sheet table");
+  const pager = pagedTable({ table, rows: entries, rowHtml, prefix: shown => shown.length ? "" : empty });
+  /* Count and total cover every matching voucher, not only the rows on screen. */
   const filter = () => {
     const type = document.querySelector("#daybook-type").value;
     const query = document.querySelector("#daybook-search").value.toLowerCase().trim();
-    let count = 0;
-    let total = 0;
-    for (const row of document.querySelectorAll("[data-book-row]")) {
-      row.hidden = Boolean((type && row.dataset.type !== type) || !row.dataset.search.includes(query));
-      if (!row.hidden) { count += 1; total += Number(row.dataset.paise); }
-    }
-    document.querySelector("#daybook-empty").hidden = count > 0;
-    document.querySelector("#daybook-count").textContent = `${count} voucher${count === 1 ? "" : "s"}`;
+    const matching = entries.filter(entry => (!type || entry.row.type === type) && entry.search.includes(query));
+    const total = matching.reduce((sum, entry) => sum + entry.row.paise, 0);
+    document.querySelector("#daybook-count").textContent = `${matching.length.toLocaleString("en-IN")} voucher${matching.length === 1 ? "" : "s"}`;
     document.querySelector("#daybook-total").textContent = formatINR(total);
+    pager.update(matching);
   };
   document.querySelector("#daybook-type").addEventListener("change", filter);
   document.querySelector("#daybook-search").addEventListener("input", filter);
@@ -755,18 +886,14 @@ async function viewLedger(token, id, ledgerId) {
   if (!still(token)) return;
   document.title = `${report.ledger.name} · ${bundle.company.name}`;
   const opening = `<tr><th scope="row">Opening</th><td></td><td></td>${figure(report.opening.dc === "Dr" ? report.opening.paise : 0)}${figure(report.opening.dc === "Cr" ? report.opening.paise : 0)}<td class="figure">${esc(formatINR(report.opening.paise))}<span class="dc">${esc(report.opening.dc)}</span></td></tr>`;
-  const rows = report.lines
-    .map(
-      (line) => `<tr>
+  const lineHtml = (line) => `<tr>
         <td class="date-cell">${esc(dateLabel(line.date))}</td>
         <td><a href="#/c/${esc(id)}/v/${encodeURIComponent(line.type)}/${encodeURIComponent(line.voucherId)}">${esc(line.number)}</a></td>
         <td>${esc(line.contra)}${line.narration ? `<div class="quiet">${esc(line.narration)}</div>` : ""}</td>
         ${figure(line.dc === "Dr" ? line.paise : 0)}
         ${figure(line.dc === "Cr" ? line.paise : 0)}
         <td class="figure">${esc(formatINR(line.balance.paise))}<span class="dc">${esc(line.balance.dc)}</span></td>
-      </tr>`,
-    )
-    .join("");
+      </tr>`;
   root.innerHTML = page({
     company: bundle.company,
     folio: "Ac",
@@ -775,11 +902,12 @@ async function viewLedger(token, id, ledgerId) {
     body: `${periodBar(range)}
       <table>
         <thead><tr><th>Date</th><th>No.</th><th>Particulars</th><th class="figure">Debit</th><th class="figure">Credit</th><th class="figure">Balance</th></tr></thead>
-        <tbody>${opening}${rows}</tbody>
+        <tbody></tbody>
         <tfoot><tr class="total"><th colspan="3">Closing</th><td></td><td></td><td class="figure">${esc(formatINR(report.closing.paise))}<span class="dc">${esc(report.closing.dc)}</span></td></tr></tfoot>
-      </table>`,
+      </table>${moreRows()}`,
   });
   bindPeriod(bundle.company);
+  pagedTable({ table: root.querySelector("#sheet table"), rows: report.lines, rowHtml: lineHtml, prefix: () => opening });
 }
 
 async function viewTrial(token, id) {
@@ -791,11 +919,8 @@ async function viewTrial(token, id) {
   );
   if (!still(token)) return;
   document.title = `Trial balance · ${bundle.company.name}`;
-  let last = "";
-  const body = report.rows
-    .map((row) => {
-      const header = row.groupName === last ? "" : `<tr class="group"><th colspan="5">${esc(row.groupName)}</th></tr>`;
-      last = row.groupName;
+  const rowHtml = (row, index, rows) => {
+    const header = index > 0 && rows[index - 1].groupName === row.groupName ? "" : `<tr class="group"><th colspan="5">${esc(row.groupName)}</th></tr>`;
       return `${header}<tr>
         <th scope="row"><a href="#/c/${esc(id)}/ledger/${esc(row.ledgerId)}">${esc(row.name)}</a></th>
         <td class="figure">${row.opening.paise ? `${esc(formatINR(row.opening.paise))}<span class="dc">${esc(row.opening.dc)}</span>` : "\u2014"}</td>
@@ -803,8 +928,7 @@ async function viewTrial(token, id) {
         <td class="figure">${row.periodCr ? esc(formatINR(row.periodCr)) : "\u2014"}</td>
         <td class="figure">${esc(formatINR(row.closing.paise))}<span class="dc">${esc(row.closing.dc)}</span></td>
       </tr>`;
-    })
-    .join("");
+  };
   const periodDebit = report.rows.reduce((sum, row) => sum + row.periodDr, 0);
   const periodCredit = report.rows.reduce((sum, row) => sum + row.periodCr, 0);
   const difference =
@@ -820,11 +944,14 @@ async function viewTrial(token, id) {
     body: `${periodBar(range)}
       <table>
         <thead><tr><th>Ledger</th><th class="figure">Opening</th><th class="figure">Debit</th><th class="figure">Credit</th><th class="figure">Closing</th></tr></thead>
-        <tbody>${body || `<tr><td colspan="5" class="quiet">No balances in this period.</td></tr>`}${difference}</tbody>
+        <tbody></tbody>
         <tfoot><tr class="total"><th colspan="2">Totals</th><td class="figure">${esc(formatINR(periodDebit))}</td><td class="figure">${esc(formatINR(periodCredit))}</td><td class="figure">${esc(formatINR(report.debit))}<span class="dc">Dr</span> = ${esc(formatINR(report.credit))}<span class="dc">Cr</span></td></tr></tfoot>
-      </table>`,
+      </table>${moreRows()}`,
   });
   bindPeriod(bundle.company);
+  /* Totals in the footer stay totals of every ledger; only the rows on screen are paged. */
+  pagedTable({ table: root.querySelector("#sheet table"), rows: report.rows, rowHtml, suffix: difference,
+    prefix: shown => shown.length ? "" : `<tr><td colspan="5" class="quiet">No balances in this period.</td></tr>` });
 }
 
 function labeledLines(label, lines, id) {
@@ -956,6 +1083,7 @@ function afterRender(token) {
 
 async function render() {
   const token = ++renderToken;
+  expandForPrint = null;
   try {
     await renderRoute(token);
   } finally {
@@ -1034,6 +1162,7 @@ async function renderRoute(token) {
 let rememberedCompany = null;
 document.addEventListener("click", event => {
   if (event.target.closest("[data-print-sheet]")) window.print();
+  if (event.target.closest("[data-export-csv]")) exportSheet();
   if (event.target.closest("[data-retry]")) render();
   if (event.target.closest(".skip")) { event.preventDefault(); document.querySelector("#sheet")?.focus(); }
   if (event.target.closest("[data-focus-period]")) { event.preventDefault(); document.querySelector("#period-control [name=from]")?.focus(); }
@@ -1067,6 +1196,21 @@ window.addEventListener("financer-new-voucher", () => {
   const route = parseRoute(); if (route.id) location.hash = "#/c/" + encodeURIComponent(route.id) + "/v/Receipt";
 });
 installFinder({ api, esc, parseRoute, routes: finderRoutes });
+shortcuts = installShortcuts({ esc, parseRoute });
+window.addEventListener("beforeprint", () => expandForPrint?.());
+
+function exportSheet() {
+  const sheet = document.querySelector("#sheet");
+  const model = sheetModel(sheet);
+  if (!model || !model.rows.length) { showAlert("This page has no rows to download. Change the period or the search, then try again."); return; }
+  const period = document.querySelector("#period-control");
+  downloadCsv(csvFileName({
+    company: document.querySelector(".company-switch strong")?.textContent || "ledgercraft",
+    title: sheet.querySelector(".sheet-head h1")?.textContent || "",
+    from: period?.elements.from.value || "",
+    to: period?.elements.to.value || "",
+  }), toCsv(model));
+}
 window.addEventListener("hashchange", render);
 async function openDesk() {
   if (location.search.includes("token=")) history.replaceState(null, "", location.pathname + location.hash);

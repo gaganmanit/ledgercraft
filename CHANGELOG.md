@@ -12,6 +12,12 @@ All notable changes to Ledgercraft are recorded here. Dates are dd-mm-yyyy.
 - Errors appear next to the form they belong to and are read out to assistive technology; a failed page offers "Try again" instead of a dead end.
 - The finder is a proper combobox with listbox results.
 - Companies page without numbering; the ledger report and day book show dd-mm-yyyy dates everywhere.
+- Ledger picker in voucher entry: type any part of a ledger name or its group path and pick from a list that shows each ledger's group and current closing balance with Dr or Cr. Arrow keys move, Return chooses and moves to the amount, Escape closes. When nothing matches, "Create a ledger named …" opens a small form in the line, saves the ledger and selects it without leaving the voucher.
+- Download CSV beside Print on every statement with a period (day book, ledger, trial balance, profit & loss, balance sheet, cash & bank, outstanding, invoice register) and on the Ledgers page. Amounts come out as plain numbers with a separate Dr/Cr column, totals included, in UTF-8 with a byte-order mark so that Excel shows ₹ correctly.
+- Keyboard shortcuts list on ? and from the cover. Option (Alt) with C, P, R, J, S, U, D or N opens a new Contra, Payment, Receipt, Journal, Sales, Purchase, Debit note or Credit note when you are not typing in a field; the New voucher menu shows each key.
+- Day book, ledger report and trial balance show 200 rows at a time with "Show 200 more rows". Search, counts and totals still cover every matching row, printing shows them all, and the CSV holds them all.
+- Owner review lists what needs attention: GSTR-1 and GSTR-3B due dates for the latest completed month with GST documents, receivables more than 30 days overdue, bank statement rows without a match, purchase credit awaiting claim or review, and stock items needing review. Each line links to the screen that settles it; the review itself appears first and this block fills in when its checks finish.
+- Bank reconciliation opens the most recent imported statement when none is chosen.
 
 ### Books
 - Income and expense ledgers start every financial year at nil in the trial balance, ledger report and group summary. Earlier years' profit appears as one brought-forward row under Capital, and the balance sheet shows retained profit separately from the current year's profit.

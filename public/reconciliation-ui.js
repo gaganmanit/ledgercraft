@@ -53,6 +53,11 @@ async function bankWorkspace(ctx) {
   const { root, api, still, token, route, base, book, esc, render, readPeriod } = ctx;
   const report = await api(`${base}/bank${route.detail ? `?statementId=${encodeURIComponent(route.detail)}` : ""}`);
   if (!still(token)) return;
+  /* With no statement chosen, open the most recent one so that the workspace shows its matches at once. */
+  if (!route.detail && report.statements.length) {
+    const latest = latestStatement(report.statements, report.banks, sessionStorage.getItem(`financer-bank-ledger:${route.id}`));
+    if (latest) { location.replace(`${book}/bank-reconciliation/${encodeURIComponent(latest.id)}`); return; }
+  }
   if (!report.banks.length) {
     render(report.company, "Bank reconciliation", `<p class="empty">Create a bank or bank overdraft ledger first, then import its statement here. <a href="${book}/ledgers">Open ledgers</a></p>`, "Br");
     return;
@@ -87,6 +92,13 @@ async function bankWorkspace(ctx) {
   });
   bindStatementImport(ctx, report, selectedBank);
   if (report.statement) bindBankReport(ctx, report);
+}
+
+/** The statement with the latest closing date, preferring the bank ledger chosen last on this screen. */
+function latestStatement(statements, banks, preferredBank) {
+  const chosen = banks.some(bank => bank.id === preferredBank);
+  const pool = chosen ? statements.filter(statement => statement.ledgerId === preferredBank) : statements;
+  return pool.slice().sort((a, b) => b.to.localeCompare(a.to) || b.from.localeCompare(a.from) || String(b.importedAt || "").localeCompare(String(a.importedAt || "")))[0] || null;
 }
 
 function bindStatementImport(ctx, report, ledgerId) {

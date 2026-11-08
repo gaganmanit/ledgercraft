@@ -78,9 +78,9 @@ final class FinancerApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private func showLoading() {
         let html = """
             <!doctype html><html><head><meta name="viewport" content="width=device-width"></head>
-            <body style="margin:0;background:#e4dccb;color:#221c16;display:grid;place-content:center;height:100vh;font-family:Palatino,serif;text-align:center">
-            <h1 style="font-size:42px;font-style:italic;margin:0 0 12px">Ledgercraft</h1>
-            <p style="font:16px -apple-system,sans-serif">Opening your books…</p></body></html>
+            <body style="margin:0;background:#e6e8e6;color:#1c1f22;display:grid;place-content:center;height:100vh;font-family:-apple-system,system-ui,sans-serif;text-align:center">
+            <h1 style="font-size:28px;font-weight:600;letter-spacing:-0.02em;margin:0 0 10px">Ledgercraft</h1>
+            <p style="font-size:15px;color:#4f565c;margin:0">Opening your books…</p></body></html>
             """
         webView.loadHTMLString(html, baseURL: nil)
         if baseURL.port != 4173 {
