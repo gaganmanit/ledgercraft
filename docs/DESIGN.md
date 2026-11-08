@@ -23,10 +23,10 @@ Defined once in `public/ledgercraft.css` under `:root`, with a dark set under `p
 | `--field` | `#F4F5F2` | `#1F2226` | Input backgrounds, hover rows |
 | `--ink` | `#1C1F22` | `#E7E8E5` | Text |
 | `--ink-2` | `#4F565C` | `#AEB4BA` | Secondary text |
-| `--ink-3` | `#7A828A` | `#7D858D` | Hints, disabled text |
+| `--ink-3` | `#687079` | `#7D858D` | Hints, disabled text (both meet 4.5:1 on the sheet) |
 | `--rule` | `#D5DEE9` | `#2B3540` | Feint horizontal row rules |
 | `--rule-2` | `#AFC0D6` | `#3D4C5E` | Stronger rules, input borders |
-| `--red` | `#A51D2D` | `#E0616C` | Totals, the spine, destructive actions |
+| `--red` | `#A51D2D` | `#EA7B84` | Totals, the spine, destructive actions |
 | `--red-rule` | `#E4B7BC` | `#5B2A31` | The hairline on the left of every money column |
 | `--red-soft` | `#F6E3E5` | `#3A1F23` | Error backgrounds |
 | `--blue` | `#1D4F9E` | `#86ACEF` | Links, focus, selection |
