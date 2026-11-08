@@ -19,6 +19,9 @@ All notable changes to Ledgercraft are recorded here. Dates are dd-mm-yyyy.
 - Owner review lists what needs attention: GSTR-1 and GSTR-3B due dates for the latest completed month with GST documents, receivables more than 30 days overdue, bank statement rows without a match, purchase credit awaiting claim or review, and stock items needing review. Each line links to the screen that settles it; the review itself appears first and this block fills in when its checks finish.
 - Bank reconciliation opens the most recent imported statement when none is chosen.
 
+- A book that opened from its backup copy shows the server's warning on every page until the next clean save. Deleting a voucher, ledger or group sends the copy you were looking at, so a stale delete is refused.
+- The profit and loss and balance sheet pages explain the financial-year rule in their introductions.
+
 ### Books
 - Income and expense ledgers start every financial year at nil in the trial balance, ledger report and group summary. Earlier years' profit appears as one brought-forward row under Capital, and the balance sheet shows retained profit separately from the current year's profit.
 - A profit and loss statement that starts at the books beginning includes the opening balances of income and expense ledgers, so a mid-year migration reconciles with the balance sheet.

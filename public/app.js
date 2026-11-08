@@ -62,8 +62,12 @@ async function api(path, options = {}) {
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || (options.method && options.method !== "GET" ? "The book could not be updated" : "That page could not be loaded"));
+  if (/^\/api\/companies\/[^/]+\/meta(\?|$)/.test(path)) bookWarning = typeof data.warning === "string" ? data.warning : "";
   return data;
 }
+
+/* Set when the server opened a book from its .bak copy; shown on every page of that company until a clean save. */
+let bookWarning = "";
 
 function focusNext(form, from) {
   const controls = [...form.querySelectorAll("input, select, textarea, button")].filter(el => !el.disabled && el.offsetParent !== null && el.getAttribute("aria-hidden") !== "true");
@@ -173,6 +177,7 @@ function page({ company, title, lede, error, status, body }) {
     <main class="sheet" id="sheet" tabindex="-1">
       <header class="sheet-head"><h1 tabindex="-1">${esc(title)}</h1>${lede ? `<p class="lede">${esc(lede)}</p>` : ""}</header>
       <div class="print-company">${esc(company?.name || "")}</div>
+      ${company && bookWarning ? `<p class="alert" role="alert">${esc(bookWarning)}</p>` : ""}
       ${error ? `<p class="alert" role="alert">${esc(error)}</p>` : ""}
       ${status ? `<p class="status" role="status">${esc(status)}</p>` : ""}
       ${body}
@@ -605,7 +610,7 @@ async function viewGroups(token, id) {
     const button = event.currentTarget;
     button.disabled = true;
     const unlock = lockEntryForm(form);
-    try { await api(`/api/companies/${encodeURIComponent(id)}/groups/${encodeURIComponent(editing.id)}`, { method: "DELETE" }); render(); }
+    try { await api(`/api/companies/${encodeURIComponent(id)}/groups/${encodeURIComponent(editing.id)}`, { method: "DELETE", body: { expected: { name: editing.name } } }); render(); }
     catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message, form); }
   });
 }
@@ -681,7 +686,7 @@ async function viewLedgers(token, id) {
     const button = event.currentTarget;
     button.disabled = true;
     const unlock = lockEntryForm(form);
-    try { await api(`/api/companies/${encodeURIComponent(id)}/ledgers/${encodeURIComponent(editing.id)}`, { method: "DELETE" }); render(); }
+    try { await api(`/api/companies/${encodeURIComponent(id)}/ledgers/${encodeURIComponent(editing.id)}`, { method: "DELETE", body: { expected: { name: editing.name, groupId: editing.groupId, opening: editing.opening } } }); render(); }
     catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message, form); }
   });
 }
@@ -831,7 +836,7 @@ async function viewVoucher(token, id, type, voucherId) {
     if (!confirm(`Remove voucher ${existing.number}?`)) return;
     const button = event.currentTarget;
     button.disabled = true;
-    try { await api(`/api/companies/${encodeURIComponent(id)}/vouchers/${encodeURIComponent(existing.id)}`, { method: "DELETE" }); location.hash = `#/c/${id}/daybook`; }
+    try { await api(`/api/companies/${encodeURIComponent(id)}/vouchers/${encodeURIComponent(existing.id)}`, { method: "DELETE", body: { expected: { type: existing.type, date: existing.date, number: existing.number, narration: existing.narration, lines: existing.lines } } }); location.hash = `#/c/${id}/daybook`; }
     catch (error) { button.disabled = false; showAlert(error.message, form); }
   });
   if (!existing) { const first = form.querySelector("#lines tr"); if (first) ledgerControl(first).focus(); }
@@ -1000,7 +1005,7 @@ async function viewProfit(token, id) {
     folio: "Pl",
     kicker: "Account",
     title: "Profit & loss",
-    lede: "Movement for the period. Opening balances of income and expense stay out of this statement.",
+    lede: "Movement for the period. Opening balances of income and expense ledgers count only when the period starts at the books beginning, so the statement agrees with the balance sheet.",
     body: `${periodBar(range)}
       <section class="stmt"><h2>Trading account</h2>${labeledLines("Income", grossIncome, id)}${labeledLines("Expenses", grossExpense, id)}${inventoryStatement(report,id)}
         <div class="stmt-total"><span>${grossLabel}</span><span class="figure">${statementTotal(report.grossProfit === null ? null : Math.abs(report.grossProfit))}</span></div>
@@ -1051,7 +1056,7 @@ async function viewBalance(token, id) {
     folio: "Bs",
     kicker: "Sheet",
     title: "Balance sheet",
-    lede: `Position as on ${dateLabel(range.to)}. Profit here is cumulative from the day the books began.`,
+    lede: `Position as on ${dateLabel(range.to)}. Profit here is this financial year's; earlier years sit in the brought-forward row under Capital.`,
     body: `${periodBar(range)}${gap}${report.inventory && !report.inventory.complete ? inventoryStatement(report,id) : ""}
       <div class="two">
         <section class="stmt"><h2>Liabilities</h2>${sideGroups(report.liabilityGroups,id,range.to)}${profit}

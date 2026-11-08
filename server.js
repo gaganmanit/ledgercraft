@@ -314,8 +314,8 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
         if (req.method === "GET" && parts.length === 4) {
           const section = parts[3];
           if (section === "meta") {
-            const { company } = await store.snapshot(id);
-            return send(res, 200, { company: { id: company.id, name: company.name, booksFrom: company.booksFrom } });
+            const { company, warning } = await store.snapshot(id);
+            return send(res, 200, { company: { id: company.id, name: company.name, booksFrom: company.booksFrom }, ...(warning ? { warning } : {}) });
           }
           if (section === "owner-review" || section === "find" || section === "masters") {
             const { company, vouchers, nextNumbers } = await store.snapshot(id);
