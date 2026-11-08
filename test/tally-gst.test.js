@@ -13,6 +13,7 @@ import { billReport } from "../lib/reconciliation-bills.js";
 import { trialBalance, dayBook } from "../lib/engine.js";
 import { exportTallyDayBook } from "../lib/tally-export.js";
 import { tallyGstFactIndex, sourceTaxFacts } from "../lib/tally-gst-facts.js";
+import { needsResources, TALLY_SALES_GST_ZIP } from "./helpers/resources.mjs";
 
 const gstin = (state = "23", pan = "ABCDE1234F") => { const prefix = `${state}${pan}1Z`; return prefix + gstinCheckDigit(prefix); };
 const file = text => ({ name: "synthetic-gst.xml", base64: Buffer.from(text).toString("base64") });
@@ -226,7 +227,8 @@ async function officialFixture(useBilledAsActual, companions = []) {
   return { ...working, registration };
 }
 
-for (const stockMode of ["source", "report-only"]) test(`official four invoices activate in ${stockMode} mode with exact source tax, ten HSN lines and full restore`, async () => {
+for (const stockMode of ["source", "report-only"]) test(`official four invoices activate in ${stockMode} mode with exact source tax, ten HSN lines and full restore`, async (t) => {
+  if (!needsResources(t, TALLY_SALES_GST_ZIP)) return;
   const book = await officialFixture(stockMode === "source"), before = stockState(book.company, book.vouchers, { to: "2023-04-30" });
   const originalPostings = structuredClone(book.vouchers);
   const plan = planTallyGstPromotion(book.company, book.vouchers, book.records);
@@ -263,7 +265,8 @@ for (const stockMode of ["source", "report-only"]) test(`official four invoices 
   assert.ok(activated.report.rows.every(row => row.discrepancies.filter(item => item.code === "duplicate-source-reference").length === 3));
 });
 
-test("bulk selection with an unsupported fourth source invoice leaves all original vouchers unpromoted", async () => {
+test("bulk selection with an unsupported fourth source invoice leaves all original vouchers unpromoted", async (t) => {
+  if (!needsResources(t, TALLY_SALES_GST_ZIP)) return;
   const book = await officialFixture(true), fourth = planTallyGstPromotion(book.company, book.vouchers, book.records).rows[3];
   const wrong = { ...fourth.mapping, accounts: { ...fourth.mapping.accounts, igst: book.registration.accounts["output-igst"] } };
   const changed = saveTallyGstMapping(book.company, book.vouchers, book.records, { ...wrong, requestId: "public-fourth-unsupported", revision: book.company.gst.tallyPromotion.revision });
@@ -275,7 +278,8 @@ test("bulk selection with an unsupported fourth source invoice leaves all origin
   assert.ok(changed.vouchers.every(voucher => !voucher.gst));
 });
 
-test("real supporting native GST masters corroborate the public workbook by date and survive later HSN/rate edits", async () => {
+test("real supporting native GST masters corroborate the public workbook by date and survive later HSN/rate edits", async (t) => {
+  if (!needsResources(t, TALLY_SALES_GST_ZIP)) return;
   const support = await readFile(new URL("fixtures/tally-gst-support.xml", import.meta.url));
   const book = await officialFixture(true, [{ name: "Synthetic-GST-Support.xml", base64: support.toString("base64") }]);
   const marker = book.company.gst.items.find(item => item.name === "Marker-Blue");

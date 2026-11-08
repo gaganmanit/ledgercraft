@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { returnWorkbook, columns, worksheetCsv } from "../lib/gst-returns.js";
 import { reconcile2B } from "../lib/gst-reconcile.js";
 import { searchHSN } from "../lib/hsn-directory.js";
+import { needsResources, HSN_DIRECTORY } from "./helpers/resources.mjs";
 
 const registration={id:"reg",name:"Synthetic company",gstin:"23ABCDE1234F1Z8",stateCode:"23"};
 const company={gst:{registrations:[registration]}};
@@ -18,7 +19,8 @@ function voucher(number,date,changes={},amount=10000) {
   const line={itemId:"item",kind:"goods",name:"Sample, part",hsnSac:"8541",unit:"NOS",gstRateBps:1800,supplyStatus:"taxable",quantity:"1",taxablePaise:amount,igstPaise:Math.round(amount*.18),cgstPaise:0,sgstPaise:0,utgstPaise:0,cessPaise:0,totalPaise:amount+Math.round(amount*.18),taxPaise:Math.round(amount*.18)};
   return {id,date,gst:{id,date,number,type:"Sales",direction:"sales",registration,registrationId:"reg",partyId:"buyer",party,placeOfSupply:"27",supplyCategory:"domestic",items:[line],totals:line,...changes}};
 }
-test("official HSN lookup includes leading zero, spaced source codes and service codes",async()=>{
+test("official HSN lookup includes leading zero, spaced source codes and service codes",async (t) =>{
+  if (!needsResources(t, HSN_DIRECTORY)) return;
   assert.equal((await searchHSN("0101")).items[0].code,"0101");
   assert.equal((await searchHSN("230700")).items[0].code,"230700");
   assert.ok((await searchHSN("9983")).items.some(i=>i.kind==="service"));
@@ -79,7 +81,8 @@ test("a late credit leaves the issued note and books intact and reduces no worki
   for (const sheet of ["b2cs","cdnur","exemp","hsn(b2c)"]) assert.deepEqual(report.sheets[sheet],[]);
 });
 
-test("goods and service code search pages the entire selectable catalogue and keeps exact leading-zero codes first",async()=>{
+test("goods and service code search pages the entire selectable catalogue and keeps exact leading-zero codes first",async (t) =>{
+  if (!needsResources(t, HSN_DIRECTORY)) return;
   const first=await searchHSN("01",{kind:"goods",selectable:true,limit:10,offset:0});
   const next=await searchHSN("01",{kind:"goods",selectable:true,limit:10,offset:10});
   assert.ok(first.total>20);assert.equal(next.total,first.total);

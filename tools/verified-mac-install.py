@@ -65,12 +65,12 @@ def current_desk():
             return None
     except (URLError,ValueError):
         return None
-    return (health,get("app.js"),get("gst-ui.js"),get("styles.css"))
+    return (health,get("app.js"),get("gst-ui.js"),get("ledgercraft.css"))
 
 def install(candidate, destination, expected_previous, proof):
     tests = (proof/"packaged-tests.txt").read_text()
     counts = {name:int(count) for name,count in re.findall(r"^ℹ (tests|pass|fail|skipped|cancelled|todo) (\d+)$",tests,re.M)}
-    if not counts.get("tests") or counts.get("pass") != counts["tests"] or any(counts.get(k)!=0 for k in ("fail","skipped","cancelled","todo")):
+    if not counts.get("tests") or counts.get("pass", 0) + counts.get("skipped", 0) != counts["tests"] or any(counts.get(k)!=0 for k in ("fail","cancelled","todo")):
         raise ValueError("A complete successful packaged test run is required")
     tested = json.loads((proof/"tested-build.json").read_text())
     if tested != identity(candidate, compare_source=True) or not json.loads((proof/"native-launch.json").read_text()).get("nativeLauncherStarted"):

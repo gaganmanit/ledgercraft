@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { start } from "../server.js";
+import { needsResources, TALLY_VOUCHERS_DEFAULT_ZIP } from "./helpers/resources.mjs";
 
 async function sourceFile(relative) {
   const bytes = await readFile(new URL("./fixtures/" + relative, import.meta.url));
@@ -29,7 +30,8 @@ async function withDesk(run) {
   finally { server.closeIdleConnections(); await new Promise(done => server.close(done)); await rm(dataDir, {recursive:true,force:true}); }
 }
 
-test("official general Tally workbook posts its actual purchase without manufacturing stock or input tax", async () => {
+test("official general Tally workbook posts its actual purchase without manufacturing stock or input tax", async (t) => {
+  if (!needsResources(t, TALLY_VOUCHERS_DEFAULT_ZIP)) return;
   await withDesk(async ({ api, importFile }) => {
     const source = await sourceFile("tally-xlsx/Tally-Vouchers-Default-Template.zip");
     const result = await importFile(source, { companyName:"Tally public example", booksFrom:"2023-04-01", accountGroupMappings:{"HDFC Bank":"g-bank"} });

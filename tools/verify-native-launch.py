@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import plistlib
 import shutil
+import secrets
 import socket
 import subprocess
 import sys
@@ -28,11 +29,14 @@ root = Path(tempfile.mkdtemp(prefix="ledgercraft-launch-"))
 with socket.socket() as reservation:
     reservation.bind(("127.0.0.1", 0))
     port = reservation.getsockname()[1]
+token = secrets.token_hex(24)
+launch_environment = dict(os.environ, LEDGERCRAFT_TOKEN=token)
 process = subprocess.Popen([app / "Contents/MacOS" / executable, "--test-workstation", root, str(port)],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=launch_environment)
 base = "http://127.0.0.1:" + str(port)
 def get(route):
-    with urllib.request.urlopen(base + route, timeout=2) as response:
+    request = urllib.request.Request(base + route, headers={"Authorization": "Bearer " + token})
+    with urllib.request.urlopen(request, timeout=2) as response:
         return response.read()
 
 try:

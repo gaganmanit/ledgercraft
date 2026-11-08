@@ -1,57 +1,44 @@
-.tally-guide { margin: 1.2rem 0; border-block: 1px solid var(--line-strong); padding: .8rem 0; }
-.tally-guide summary, .tally-original summary { cursor: pointer; font-weight: 600; }
-.tally-guide li { margin-bottom: .5rem; }
-.tally-import-form { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.5rem 0; max-width: 48rem; }
-.tally-import-form label { display: grid; gap: .35rem; }
-.tally-wide { grid-column: 1 / -1; }
-.tally-import-form input[type="file"] { padding: .8rem 0; }
-.tally-source-files { padding-left: 1.2rem; }
-.tally-source-files small { display: block; overflow-wrap: anywhere; font-family: var(--mono); font-size: .68rem; margin: .2rem 0 .7rem; }
-.tally-issues { padding-left: 1.5rem; }
-.tally-issues li { margin: .8rem 0; }
-.tally-blocker { color: var(--vermilion); }
-.tally-confirm { display: flex; align-items: start; gap: .6rem; margin: 1.5rem 0; }
-.tally-confirm input { width: 1.1rem; height: 1.1rem; margin-top: .2rem; }
-.tally-fields { display: grid; grid-template-columns: minmax(8rem, .6fr) 1.4fr; gap: .5rem 1rem; }
-.tally-fields dt { color: var(--ink-soft); }
-.tally-fields dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.tally-table-scroll { overflow-x: auto; }
-.tally-data-section { margin-top: 2rem; }
-.tally-original { margin-top: 2rem; }
-.tally-original pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 34rem; overflow: auto; font-size: .75rem; }
-.tally-source-filter { display: flex; flex-wrap: wrap; align-items: end; gap: .7rem; margin: 1.5rem 0; }
-.tally-source-filter label { display: grid; gap: .3rem; }
-.tally-source-filter label:nth-child(2) { flex: 1; min-width: 15rem; }
-@media (max-width: 760px) { .tally-import-form { grid-template-columns: 1fr; } .tally-fields { grid-template-columns: 1fr; gap: .2rem; } .tally-fields dd { margin-bottom: .7rem; } }
-@media (prefers-reduced-motion: reduce) { .tally-workspace { scroll-behavior: auto; } }
-@media print { .tally-toolbar, .tally-source-filter, .tally-original { display: none; } .tally-table-scroll { overflow: visible; } }
+/* Tally migration: import preview, source records and source reviews (tally-tools.js).
+   Layout, forms, tables, pills and messages come from ledgercraft.css; only module rules live here. */
 
-.tally-export-menu { margin: 1rem 0; padding: .8rem 0; border-block: 1px solid var(--line-strong); }
-.tally-export-menu summary { cursor: pointer; font-weight: 600; }
-.tally-export-section { margin: 1.5rem 0; }
-.tally-export-section h2 { font-size: 1.2rem; }
-.tally-download { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; }
-.tally-download label { display: grid; gap: .3rem; min-width: 13rem; }
-.tally-download a { padding: .5rem 0; }
-@media print { .tally-export-menu, .tally-export-section { display: none; } }
-.tally-bill-review { margin-top: 2rem; border-top: 1px solid var(--line-strong); padding-top: 1rem; }
-.tally-bill-review h2 { font: 500 1.5rem var(--serif); }
-.tally-bill-review > p, .tally-bill-preview { font-size: .85rem; }
-.tally-bill-review summary { cursor: pointer; min-height: 44px; padding: .55rem 0; border-bottom: 1px solid var(--line-strong); }
-.tally-bill-filters { display: flex; flex-wrap: wrap; align-items: end; gap: .8rem; margin: 1rem 0; }
-.tally-bill-filters label { flex: 1; min-width: 11rem; font-size: .8rem; }
-.tally-bill-review table { font-size: .8rem; }
-.tally-bill-review table small { display: block; font-size: .73rem; font-weight: 400; color: var(--ink-soft); margin-top: .25rem; }
-.tally-bill-review .figure { font-size: .75rem; }
-.tally-bill-review [data-bill-review-error]:empty { display: none; }
-@media print { .tally-bill-filters, .tally-bill-review button, .tally-bill-review [data-bill-review-actions] { display: none !important; } }
+.tally-import-form { max-width: 48rem; }
+.tally-import-form .actions { margin-top: 0; }
 
-.tally-group-mappings { margin: 1.5rem 0; padding: 1rem 0; border-block: 1px solid var(--line-strong); }
-.tally-group-mappings label { display: grid; grid-template-columns: minmax(10rem, 1fr) minmax(13rem, 1fr); align-items: center; gap: .4rem 1rem; margin: .8rem 0; max-width: 42rem; }
-.tally-group-mappings small { grid-column: 1 / -1; color: var(--ink-soft); }
-.tally-group-mappings select { min-height: 44px; }
-.tally-opening-scope, .tally-gst-preview { max-width: 65ch; }
-@media (max-width: 600px) { .tally-group-mappings label { grid-template-columns: 1fr; } }
+.tally-guide ol { padding-left: 22px; }
+.tally-guide li { margin-bottom: 8px; max-width: 70ch; }
 
-.tally-group-mappings .tally-confirm { display: flex; gap: .6rem; }
-.tally-group-mappings .tally-confirm input { flex: 0 0 1.1rem; }
+.tally-source-files { padding-left: 20px; }
+.tally-source-files li { margin: 8px 0; }
+.tally-source-files small { display: block; margin-top: 2px; color: var(--ink-2); overflow-wrap: anywhere; }
+
+/* Review items are not a sequence: the state pill leads each line instead of a number. */
+.tally-issues { list-style: none; padding-left: 0; }
+.tally-issues li { margin: 8px 0; max-width: 80ch; }
+.tally-issues .pill { margin-right: 6px; }
+
+.tally-opening-scope, .tally-gst-preview { max-width: 70ch; }
+.tally-opening-scope .pill { margin-right: 6px; }
+
+.tally-choice .form-grid label > span { color: var(--ink); }
+.tally-choice .form-grid small { color: var(--ink-2); }
+.tally-choice h4 { margin-top: 18px; }
+.tally-sign-choice { max-width: 32rem; margin-bottom: 12px; }
+
+.tally-download label { flex: 0 1 20rem; }
+.tally-export-section { margin: 24px 0; }
+
+.tally-fields dd { white-space: pre-wrap; }
+.tally-original pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 34rem; overflow: auto; }
+.tally-data-section { margin-top: 28px; }
+.tally-data-section td.code { overflow-wrap: anywhere; }
+
+.tally-record-details > span + span { margin-left: 12px; }
+.tally-records td, .tally-records th { overflow-wrap: anywhere; }
+
+.tally-review td small, .tally-review th small { display: block; margin-top: 2px; font-size: 13px; font-weight: 400; color: var(--ink-2); }
+
+@media print {
+  .tally-workspace button, .tally-workspace form, .tally-guide, .tally-toolbar, .tally-export-menu, .tally-export-section, .tally-original, .tally-choice, #tally-message, #tally-preview [role="status"], .tally-review [role="alert"], .tally-review .actions { display: none !important; }
+  .tally-data-section, .tally-fields { break-inside: auto; }
+  .tally-data-section h2 { break-after: avoid; }
+}

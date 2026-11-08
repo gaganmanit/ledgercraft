@@ -10,6 +10,7 @@ import { gstinCheckDigit } from "../lib/gst.js";
 import { returnWorkbook } from "../lib/gst-returns.js";
 import { gstrWorkbook } from "../lib/gst-workbook.js";
 import { createStore } from "../lib/store.js";
+import { needsResources, GSTR1_TEMPLATE } from "./helpers/resources.mjs";
 
 const execute = promisify(execFile);
 const resources = fileURLToPath(new URL("../lib/resources/", import.meta.url));
@@ -37,7 +38,8 @@ async function verify(report, additional) {
   } finally { await rm(temporary, { recursive: true, force: true }); }
 }
 
-test("official XLSX preserves Excel-specific column order, data types, master lists and summaries", async () => {
+test("official XLSX preserves Excel-specific column order, data types, master lists and summaries", async (t) => {
+  if (!needsResources(t, GSTR1_TEMPLATE)) return;
   const sheets = Object.fromEntries(Object.keys(columns).map(name => [name, []]));
   const recipient = gstin("27", "PQRST5678L");
   sheets["b2b,sez,de"] = [
@@ -59,7 +61,8 @@ test("official XLSX preserves Excel-specific column order, data types, master li
   ] });
 });
 
-test("posted mixed-rate invoice and credit note reconcile exact return totals through XLSX", async () => {
+test("posted mixed-rate invoice and credit note reconcile exact return totals through XLSX", async (t) => {
+  if (!needsResources(t, GSTR1_TEMPLATE)) return;
   const temporary = await mkdtemp(path.join(tmpdir(), "financer-xlsx-books-"));
   const store = createStore(temporary);
   try {
@@ -85,7 +88,8 @@ test("posted mixed-rate invoice and credit note reconcile exact return totals th
   } finally { await rm(temporary, { recursive: true, force: true }); }
 });
 
-test("unsupported or inexact workbook input rejects without a partial artifact", async () => {
+test("unsupported or inexact workbook input rejects without a partial artifact", async (t) => {
+  if (!needsResources(t, GSTR1_TEMPLATE)) return;
   await assert.rejects(gstrWorkbook({}), /registration and return month/);
   const sheets = Object.fromEntries(Object.keys(columns).map(name => [name, []]));
   const report = { month: "2026-11", registration: { gstin: gstin("23") }, sheets };
@@ -98,7 +102,8 @@ test("unsupported or inexact workbook input rejects without a partial artifact",
 });
 
 
-test("literal document identifiers have exact distinct summaries", async () => {
+test("literal document identifiers have exact distinct summaries", async (t) => {
+  if (!needsResources(t, GSTR1_TEMPLATE)) return;
   const sheets = Object.fromEntries(Object.keys(columns).map(name => [name, []]));
   const recipient = gstin("27", "PQRST5678L");
   for (const [number, amount] of [["0001", "118.00"], ["0001", "118.00"], ["1", "236.00"], ["A*1", "354.00"], ["AB1", "472.00"], ["A?1", "590.00"], ["A~1", "708.00"]]) {

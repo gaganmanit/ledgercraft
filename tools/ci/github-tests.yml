@@ -1,0 +1,40 @@
+# Copy this file to .github/workflows/tests.yml to run the suite on every push.
+# Pushing files under .github/workflows needs a token with the `workflow` scope (gh auth refresh -s workflow).
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: node --test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Restore public reference resources
+        id: resources
+        uses: actions/cache@v4
+        with:
+          path: |
+            lib/resources/hsn-sac.json
+            lib/resources/GSTR1_Excel_Workbook_Template_V2.2.xlsx
+            test/fixtures/tally-xlsx/*.zip
+            test/fixtures/tally/official
+          key: ledgercraft-resources-${{ hashFiles('tools/prepare-resources.py') }}
+      - name: Fetch public reference resources
+        if: steps.resources.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: python3 tools/prepare-resources.py --fetch --tests
+      - name: Syntax check browser modules
+        run: for f in public/*.js server.js lib/*.js; do node --check "$f"; done
+      - name: Run tests
+        run: npm test

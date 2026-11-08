@@ -8,6 +8,7 @@ import { readTallyZip } from '../lib/tally-zip.js';
 import { tallyRecords, value, children, findNodes } from '../lib/tally-format.js';
 import { tallyRecordView } from '../lib/tally-read.js';
 import { previewTally, restoreTallyArchive, assertTallySourceRecords, hash, tallyAmount } from '../lib/tally-import.js';
+import { needsResources, TALLY_SALES_GST_ZIP, TALLY_LEDGERS_ZIP, TALLY_STOCK_PRICE_ZIP, TALLY_STOCK_STANDARD_ZIP } from './helpers/resources.mjs';
 
 const fixture = name => readFile(new URL('fixtures/tally-xlsx/'+name,import.meta.url));
 const sampleName='Tally-Sales-GST-Template.zip';
@@ -48,7 +49,8 @@ const baseRows=()=>[['2023-04-01','Sales','0001','Public customer',{f:'SUM(E3:E4
 const parsedRecords=bytes=>{const result=parseTallyXlsx(bytes);return {...result,records:tallyRecords(result.tree)};};
 const blocking=result=>result.issues.filter(issue=>issue.severity==='blocking');
 
-test('official GST sales workbook yields four exact balanced vouchers, ten items and source-linked allocations',async()=>{
+test('official GST sales workbook yields four exact balanced vouchers, ten items and source-linked allocations',async(t)=>{
+  if (!needsResources(t, TALLY_SALES_GST_ZIP)) return;
   const bytes=await fixture(sampleName), p=parsedRecords(bytes);
   assert.equal(p.encoding,'xlsx-zip');assert.equal(blocking(p).length,0,JSON.stringify(p.issues));assert.equal(p.workbook.voucherCount,4);
   assert.deepEqual(p.records.map(record=>value(record.node,'DATE')),['20230401','20230402','20230403','20230404']);
@@ -77,14 +79,16 @@ test('official GST sales workbook yields four exact balanced vouchers, ten items
   const view=tallyRecordView({...p.records[0],recordId:'public'});assert.deepEqual(view.spreadsheet,source);assert.equal(view.transport.IRN,value(first,'IRN'));
 });
 
-test('inner XLSX, supplier ZIP and renamed identical copies have identical normalized source records',async()=>{
+test('inner XLSX, supplier ZIP and renamed identical copies have identical normalized source records',async(t)=>{
+  if (!needsResources(t, TALLY_SALES_GST_ZIP)) return;
   const bytes=await fixture(sampleName), [name,inner]=[...readTallyZip(bytes)][0];
   const outer=parsedRecords(bytes), plain=parseTallyXlsx(inner,{name}), renamed=parseTallyXlsx(inner,{name:'Renamed.xlsx'});
   assert.equal(plain.encoding,'xlsx');assert.deepEqual(plain.tree,outer.tree);assert.deepEqual(renamed.tree,plain.tree);
   assert.deepEqual(readTallyZip(bytes).get(name),inner);
 });
 
-test('official ledger master template preserves openings, four opening bills and multiline addresses',async()=>{
+test('official ledger master template preserves openings, four opening bills and multiline addresses',async(t)=>{
+  if (!needsResources(t, TALLY_LEDGERS_ZIP)) return;
   const p=parsedRecords(await fixture('Tally-Ledgers-Template.zip'));assert.equal(blocking(p).length,0);assert.equal(p.records.length,15);
   const byName=new Map(p.records.map(record=>[record.node.attrs.NAME,record.node]));
   assert.equal(value(byName.get('National Traders'),'OPENINGBALANCE'),'-15200.00');
@@ -96,7 +100,8 @@ test('official ledger master template preserves openings, four opening bills and
   assert.equal(p.records.flatMap(record=>findNodes(record.node,'BILLALLOCATIONS')).length,4);
 });
 
-test('official stock templates preserve base units and all price/cost schedule rows without activating schedules',async()=>{
+test('official stock templates preserve base units and all price/cost schedule rows without activating schedules',async(t)=>{
+  if (!needsResources(t, TALLY_STOCK_PRICE_ZIP, TALLY_STOCK_STANDARD_ZIP)) return;
   for(const filename of ['Tally-Stock-Price-Template.zip','Tally-Stock-Standard-Template.zip']){
     const p=parsedRecords(await fixture(filename));assert.equal(blocking(p).length,0);assert.equal(p.records.length,4);
     assert.ok(p.records.every(record=>record.type==='STOCKITEM'&&value(record.node,'BASEUNITS')==='Nos'));
@@ -191,7 +196,8 @@ test('ZIP reader rejects traversal, duplicates, checksum changes, expansion bomb
   assert.throws(()=>parseTallyXlsx(workbook(baseHeaders,baseRows(),{extra:[['xl/vbaProject.bin',Buffer.from('not executable')]]})),/Macro-enabled/);
 });
 
-test('real read path deduplicates source copies and reconstructs full XLSX source archive without changing bytes',async()=>{
+test('real read path deduplicates source copies and reconstructs full XLSX source archive without changing bytes',async(t)=>{
+  if (!needsResources(t, TALLY_SALES_GST_ZIP)) return;
   const bytes=await fixture(sampleName), file={name:sampleName,base64:bytes.toString('base64')};
   const p=previewTally([file],options);assert.equal(p.canCommit,true,JSON.stringify(p.issues));assert.equal(p.vouchers.length,4);
   assert.equal(p.summary.reconciliation.postedDebitPaise,3209600);assert.equal(p.summary.reconciliation.postedCreditPaise,3209600);

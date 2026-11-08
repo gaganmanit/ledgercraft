@@ -1,34 +1,44 @@
 const fields = { type: "Type", number: "Number", date: "Date", taxable: "Taxable ₹", cgst: "CGST ₹", sgst: "SGST / UTGST ₹", igst: "IGST ₹", cess: "Cess ₹", total: "Total ₹", placeOfSupply: "Place of supply", reverseCharge: "Reverse charge" };
 const monetary = new Set(["taxable","cgst","sgst","igst","cess","total"]);
-const humanDate = v => v && v.split("-").reverse().join("-");
+const dateLabel = value => /^\d{4}-\d{2}-\d{2}$/.test(value || "") ? value.split("-").reverse().join("-") : value || "";
+const STATUS_TONE = { Matched: "ok", Mismatch: "bad", Duplicate: "bad", Ambiguous: "warn", "Only in 2B": "warn", "Only in books": "warn", "Absent from selected pages": "warn" };
+const ITC_LABEL = { Y: "ITC available", N: "ITC not available" };
 
 export function showMatches(target, result, { esc, href, formatINR }) {
   let page = 0;
   const size = 50;
   const counts = new Map();
   for (const row of result.results) counts.set(row.status, (counts.get(row.status) || 0) + 1);
-  target.innerHTML = `<h3>Matching results · ${result.results.length}</h3>
-    ${result.partial ? `<p>Compared with ${result.pageCount} selected document page(s). Include the GSTN file-count summary to check completeness.</p>` : ""}
-    ${result.exceptions.map(e=>`<p>${esc(e)}</p>`).join("")}
-    <div class="book-toolbar"><label>Match status <select data-filter><option value="">All results</option>${[...counts].map(([s,n])=>`<option value="${esc(s)}">${esc(s)} (${n})</option>`).join("")}</select></label>
-    <button type="button" class="secondary" data-export>Export matching report</button></div><div data-table></div>`;
+  const pill = status => `<span class="pill${STATUS_TONE[status] ? " " + STATUS_TONE[status] : ""}">${esc(status)}</span>`;
+  const total = result.results.length;
+  target.innerHTML = `<h3>Matching results</h3>
+    <p>${total} ${total === 1 ? "row" : "rows"} compared for <span class="code">${esc(result.gstin)}</span>.</p>
+    ${counts.size ? `<div class="summary-strip">${[...counts].map(([status, n]) => `<div><span>${esc(status)}</span><strong>${n}</strong></div>`).join("")}</div>` : ""}
+    ${result.partial ? `<p class="notice">Compared with ${result.pageCount} selected document ${result.pageCount === 1 ? "page" : "pages"}. Include the GSTN file-count summary to check that the statement is complete.</p>` : ""}
+    ${result.exceptions.length ? `<ul class="attention-rule">${result.exceptions.map(e => `<li>${esc(e)}</li>`).join("")}</ul>` : ""}
+    <div class="toolbar"><label>Match status <select data-filter><option value="">All results</option>${[...counts].map(([s, n]) => `<option value="${esc(s)}">${esc(s)} (${n})</option>`).join("")}</select></label>
+    <button type="button" class="ghost" data-export>Export matching report</button></div><div data-table></div>`;
   const filter = target.querySelector("[data-filter]"), table = target.querySelector("[data-table]");
-  const format = (field, value) => value === undefined ? "—" : monetary.has(field) ? formatINR(value) : field === "date" ? humanDate(value) : String(value);
-  const bookLink = (id, label) => `<a href="${href}/gst-document/${encodeURIComponent(id)}">${esc(label)}</a>`;
+  const format = (field, value) => value === undefined ? "—" : monetary.has(field) ? formatINR(value) : field === "date" ? dateLabel(value) : String(value);
+  const amountCell = value => `<td class="figure${value === undefined ? " quiet" : ""}">${esc(format("total", value))}</td>`;
+  const bookLink = (id, label) => `<a class="code" href="${href}/gst-document/${encodeURIComponent(id)}">${esc(label)}</a>`;
   const rows = () => result.results.filter(row => !filter.value || row.status === filter.value);
   function draw() {
     const list = rows(), start = size * page;
     const body = list.slice(start, start + size).map(r => {
-      const original = r.original ? `<small class="gst-detail">Originally ${esc(r.original.type)} ${esc(r.original.number)} · ${esc(humanDate(r.original.date))}</small>` : "";
+      const section = [r.section ? r.section.toUpperCase() : "", dateLabel(r.date)].filter(Boolean).join(", ");
+      const original = r.original ? `<div class="quiet">Originally ${esc(r.original.type)} <span class="code">${esc(r.original.number)}</span> dated ${esc(dateLabel(r.original.date))}</div>` : "";
       const detail = r.differences.map(field => {
         const pair = r.values[field];
-        return `<div>${esc(fields[field])} · ${esc(format(field,pair.book))} → ${esc(format(field,pair.portal))}</div>`;
+        return `<div>${esc(fields[field])}: ${esc(format(field, pair.book))} in books, ${esc(format(field, pair.portal))} in 2B</div>`;
       }).join("");
       const match = r.bookId ? bookLink(r.bookId, r.values.number.book) : (r.candidates || []).map(c => bookLink(c.id, c.number)).join(", ");
-      return `<tr><td>${esc(r.status)}</td><td>${esc(r.gstin)}</td><td>${esc(r.number)}<small class="gst-detail">${esc(r.section.toUpperCase())} · ${esc(humanDate(r.date))}</small>${original}</td><td>${match || "—"}${r.bookDate ? `<small class="gst-detail">Posted ${esc(humanDate(r.bookDate))}</small>` : ""}</td><td>${esc(format("total",r.bookValue))}</td><td>${esc(format("total",r.portalValue))}</td><td>${detail || "—"}</td><td>${esc([r.statementITC,r.reason].filter(Boolean).join(" · ") || "—")}</td><td>${esc(r.imsStatus || "—")}</td></tr>`;
+      const itc = [ITC_LABEL[r.statementITC] || r.statementITC, r.reason].filter(Boolean).map(text => `<div>${esc(text)}</div>`).join("");
+      return `<tr><td>${pill(r.status)}</td><td class="code">${esc(r.gstin)}</td><td><span class="code">${esc(r.number)}</span>${section ? `<div class="quiet">${esc(section)}</div>` : ""}${original}</td><td>${match || "—"}${r.bookDate ? `<div class="quiet">Posted ${esc(dateLabel(r.bookDate))}</div>` : ""}</td>${amountCell(r.bookValue)}${amountCell(r.portalValue)}<td>${detail || "—"}</td><td>${itc || "—"}</td><td>${esc(r.imsStatus || "—")}</td></tr>`;
     }).join("");
-    table.innerHTML = `<div class="gst-scroll"><table><thead><tr>${["Status","Supplier GSTIN","Document","Book entry","Books ₹","2B ₹","Differences (books → 2B)","2B ITC","IMS"].map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>
-      ${list.length > size ? `<div class="book-toolbar"><button class="secondary" data-prev ${page===0?"disabled":""}>Previous</button><span>${start+1}–${Math.min(list.length,start+size)} of ${list.length}</span><button class="secondary" data-next ${start+size>=list.length?"disabled":""}>Next</button></div>` : ""}`;
+    const head = [["Status"], ["Supplier GSTIN"], ["Document"], ["Book entry"], ["Books ₹", "figure"], ["2B ₹", "figure"], ["Differences, books then 2B"], ["2B ITC"], ["IMS"]];
+    table.innerHTML = `<div class="table-scroll"><table><thead><tr>${head.map(([label, type]) => `<th${type ? ` class="${type}"` : ""}>${esc(label)}</th>`).join("")}</tr></thead><tbody>${body || `<tr><td colspan="9" class="quiet">No rows have this status. Choose All results to see every row.</td></tr>`}</tbody></table></div>
+      ${list.length > size ? `<div class="actions"><button type="button" class="ghost" data-prev ${page === 0 ? "disabled" : ""}>Previous rows</button><span>Rows ${start + 1} to ${Math.min(list.length, start + size)} of ${list.length}</span><button type="button" class="ghost" data-next ${start + size >= list.length ? "disabled" : ""}>Next rows</button></div>` : ""}`;
     const prev = table.querySelector("[data-prev]"), next = table.querySelector("[data-next]");
     if (prev) prev.onclick = () => { page--; draw(); };
     if (next) next.onclick = () => { page++; draw(); };

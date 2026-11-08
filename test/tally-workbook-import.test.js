@@ -6,6 +6,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { start } from "../server.js";
+import { needsResources, TALLY_SALES_GST_ZIP } from "./helpers/resources.mjs";
 
 const directory=new URL("./fixtures/tally-xlsx/",import.meta.url);
 const namedFile=async name=>({name,base64:(await readFile(new URL(name,directory))).toString("base64")});
@@ -27,7 +28,7 @@ async function withDesk(work) {
   finally {await new Promise(done=>server.close(done)); await rm(dataDir,{recursive:true,force:true});}
 }
 
-test("HTTP workbook review retains group and quantity choices, restores exact sources, and retires the committed preview copy",()=>withDesk(async({post,get,dataDir})=>{
+test("HTTP workbook review retains group and quantity choices, restores exact sources, and retires the committed preview copy",(t)=>needsResources(t, TALLY_SALES_GST_ZIP) && withDesk(async({post,get,dataDir})=>{
   const file=await namedFile("Tally-Sales-GST-Template.zip"), files=[file];
   const first=await post("/api/tally/preview",{...options,files});
   assert.equal(first.canCommit,true);assert.equal(first.summary.openingScope.billedOnlyLines,10);
@@ -50,7 +51,7 @@ test("HTTP workbook review retains group and quantity choices, restores exact so
   assert.deepEqual((await readdir(path.join(dataDir,"tally-previews",reviewed.token))).sort(),["report.json","result.json"]);
 }));
 
-test("overlapping workbook and XML exports require a source choice and restore checks the chosen posting",()=>withDesk(async({post,get})=>{
+test("overlapping workbook and XML exports require a source choice and restore checks the chosen posting",(t)=>needsResources(t, TALLY_SALES_GST_ZIP) && withDesk(async({post,get})=>{
   const excel=await namedFile("Tally-Sales-GST-Template.zip"), files=[excel,overlapXml];
   const blocked=await post("/api/tally/preview",{...options,files});
   assert.equal(blocked.canCommit,false);assert.equal(blocked.overlaps.length,1);

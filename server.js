@@ -3,7 +3,8 @@ import { handleAmendmentRoute } from "./lib/gst-amendment-routes.js";
 import { handleItcRoute } from "./lib/gst-itc-routes.js";
 import { signedQrSvg } from "./lib/signed-qr.js";
 import { createReadStream } from "node:fs";
-import { access } from "node:fs/promises";
+import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,17 +25,24 @@ import { balanceSheet, dayBook, ledgerReport, profitAndLoss, trialBalance } from
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(root, "public");
+const { version } = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 
-const staticFiles = {
-  "/": ["index.html", "text/html; charset=utf-8"],
-  "/styles.css": ["styles.css", "text/css; charset=utf-8"],
-  "/gst-credit-review-ui.js": ["gst-credit-review-ui.js", "text/javascript; charset=utf-8"],
-  "/app.js": ["app.js", "text/javascript; charset=utf-8"],
-  "/tally-bridge.ps1": ["tally-bridge.ps1", "application/octet-stream"],
-  "/favicon.svg": ["favicon.svg", "image/svg+xml"],
-  "/voucher-entry.js": [path.join(root, "lib", "voucher-entry.js"), "text/javascript; charset=utf-8"],
-  "/money.js": [path.join(root, "lib", "money.js"), "text/javascript; charset=utf-8"],
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".txt": "text/plain; charset=utf-8",
+  ".ps1": "application/octet-stream",
 };
+const browserModules = {
+  "/voucher-entry.js": path.join(root, "lib", "voucher-entry.js"),
+  "/money.js": path.join(root, "lib", "money.js"),
+};
+const immutable = /\.(woff2|ttf|png)$/;
 
 function send(res, status, body) {
   const payload = JSON.stringify(body);
@@ -45,9 +53,28 @@ function send(res, status, body) {
   res.end(payload);
 }
 
-function fail(res, error) {
-  const missing = /Unknown company|ENOENT/i.test(error.message);
-  send(res, missing ? 404 : 400, { error: missing ? "That company is not on this machine" : error.message });
+let requestSerial = 0;
+
+function fail(req, res, error) {
+  const message = String(error?.message || error || "Unknown error");
+  const companyMissing = /Unknown company|not on this machine/i.test(message) ||
+    (error?.code === "ENOENT" && /[\\/]companies[\\/]/.test(String(error.path || "")));
+  if (companyMissing) return send(res, 404, { error: "That company is not on this machine" });
+  const id = `r${(++requestSerial).toString(36)}`;
+  if (error?.code === "ENOENT") {
+    const file = path.basename(String(error.path || ""));
+    console.error(`[${id}] ${req.method} ${req.url} missing file: ${error.path}`);
+    const resource = /hsn-sac\.json|GSTR1_Excel_Workbook_Template/.test(file);
+    return send(res, 500, { error: resource
+      ? `The reference file ${file} is not installed. Run "npm run setup" in the Ledgercraft folder, then reload. (${id})`
+      : `A file Ledgercraft needs is missing: ${file || "unknown"}. (${id})`, requestId: id });
+  }
+  const internal = error instanceof TypeError || error instanceof RangeError || error instanceof ReferenceError || (error instanceof SyntaxError && !/JSON/i.test(message));
+  if (internal) {
+    console.error(`[${id}] ${req.method} ${req.url} internal error:`, error?.stack || error);
+    return send(res, 500, { error: `Ledgercraft hit an internal error and did not save anything. Reference ${id}.`, requestId: id });
+  }
+  send(res, 400, { error: message });
 }
 
 async function readBody(req) {
@@ -72,20 +99,92 @@ async function readBody(req) {
   }
 }
 
-function serveStatic(res, urlPath) {
-  let spec = Object.hasOwn(staticFiles, urlPath) ? staticFiles[urlPath] : null;
-  if (["/book-tools.js", "/finder.js", "/gst-ui.js", "/gst-exchange.js", "/reconciliation-ui.js", "/gst-returns-ui.js", "/gst-2b-ui.js", "/gst-rcm-ui.js", "/stock-ui.js", "/gst-itc-ui.js", "/gst-amendment-ui.js", "/gst-amendment-disposition.js", "/gst-filed-source-ui.js", "/gst-filed-source-worker.js", "/gst-filed-source.js", "/tally-tools.js", "/tally-gst-ui.js", "/tally-invoice-references.js"].includes(urlPath)) spec = [urlPath.slice(1), "text/javascript; charset=utf-8"];
-  if (["/desk.css", "/book-tools.css", "/gst-ui.css", "/gst-exchange.css", "/gst-rcm-ui.css", "/stock-ui.css", "/gst-itc-ui.css", "/gst-amendment-ui.css", "/reconciliation-ui.css", "/tally-tools.css", "/tally-gst-ui.css"].includes(urlPath)) spec = [urlPath.slice(1), "text/css; charset=utf-8"];
-  if (/^\/fonts\/(Newsreader(?:-Italic)?|SourceSans3|IBMPlexMono-Regular)\.ttf$/.test(urlPath)) {
-    spec = [path.join(publicDir, urlPath.slice(1)), "font/ttf"];
+const referenceResources = {
+  hsnDirectory: path.join(root, "lib", "resources", "hsn-sac.json"),
+  gstr1Template: path.join(root, "lib", "resources", "GSTR1_Excel_Workbook_Template_V2.2.xlsx"),
+};
+
+async function resourceStatus() {
+  const status = {};
+  for (const [name, file] of Object.entries(referenceResources)) {
+    status[name] = await access(file).then(() => true, () => false);
   }
-  if (!spec) return false;
-  const filePath = spec[0].includes(`${path.sep}`) || path.isAbsolute(spec[0]) ? spec[0] : path.join(publicDir, spec[0]);
-  res.writeHead(200, {
-    "content-type": spec[1],
-    "cache-control": "no-cache",
-  });
-  createReadStream(filePath).on("error", () => res.destroy()).pipe(res);
+  return status;
+}
+
+const SESSION_COOKIE = "ledgercraft_session";
+
+function cookieValue(req, name) {
+  const header = req.headers.cookie;
+  if (!header) return null;
+  for (const part of header.split(";")) {
+    const [key, ...rest] = part.trim().split("=");
+    if (key === name) return decodeURIComponent(rest.join("="));
+  }
+  return null;
+}
+
+function sameToken(given, expected) {
+  if (typeof given !== "string" || !given) return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** A stable per-workstation secret so that only pages opened from the start link, or the Mac app, can use the API. */
+export async function workstationToken(home, provided) {
+  if (provided) return provided;
+  const file = path.join(home, "session-token");
+  try {
+    const existing = (await readFile(file, "utf8")).trim();
+    if (/^[a-f0-9]{48}$/.test(existing)) return existing;
+  } catch { /* first start */ }
+  const token = randomBytes(24).toString("hex");
+  await mkdir(home, { recursive: true, mode: 0o700 });
+  await writeFile(file, token + "\n", { mode: 0o600 });
+  return token;
+}
+
+function lockedPage(port) {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ledgercraft</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#e6e8e6;color:#1c1f22;font:15px/1.5 system-ui,sans-serif}main{max-width:34rem;background:#fcfcfa;border:1px solid #d5dee9;border-left:3px solid #a51d2d;padding:28px 32px;border-radius:2px}h1{font-size:22px;margin:0 0 8px}p{margin:8px 0}code{font-family:ui-monospace,Menlo,monospace;font-size:13px;background:#f4f5f2;padding:2px 6px;border-radius:3px}</style></head>
+<body><main><h1>Open Ledgercraft from its start link</h1><p>This copy of Ledgercraft only answers pages opened from the link it printed when it started, so that other programs on this computer cannot read the books.</p><p>Look in the terminal where you ran <code>npm start</code> for a line like <code>http://127.0.0.1:${port}/?token=…</code> and open that link once. Your browser remembers it afterwards.</p><p>The Mac app does this for you.</p></main></body></html>`;
+}
+
+function staticPath(urlPath) {
+  if (urlPath === "/") return path.join(publicDir, "index.html");
+  if (Object.hasOwn(browserModules, urlPath)) return browserModules[urlPath];
+  let decoded;
+  try { decoded = decodeURIComponent(urlPath); } catch { return null; }
+  if (decoded.includes("\0") || decoded.split("/").some(part => part === ".." || part.startsWith("."))) return null;
+  const file = path.resolve(publicDir, "." + path.posix.normalize(decoded));
+  if (!file.startsWith(publicDir + path.sep)) return null;
+  if (!Object.hasOwn(MIME, path.extname(file))) return null;
+  return file;
+}
+
+async function serveStatic(req, res, urlPath) {
+  const file = staticPath(urlPath);
+  if (!file) return false;
+  let info;
+  try { info = await stat(file); } catch { return false; }
+  if (!info.isFile()) return false;
+  const etag = `W/"${info.size.toString(16)}-${Math.floor(info.mtimeMs).toString(16)}"`;
+  const headers = {
+    "content-type": MIME[path.extname(file)] || MIME[".html"],
+    "cache-control": immutable.test(file) ? "public, max-age=31536000, immutable" : "no-cache",
+    "etag": etag,
+    "last-modified": info.mtime.toUTCString(),
+  };
+  if (req.headers["if-none-match"] === etag) {
+    res.writeHead(304, headers);
+    res.end();
+    return true;
+  }
+  headers["content-length"] = info.size;
+  res.writeHead(200, headers);
+  if (req.method === "HEAD") { res.end(); return true; }
+  createReadStream(file).on("error", () => res.destroy()).pipe(res);
   return true;
 }
 
@@ -96,7 +195,7 @@ function reportRange(company, url) {
   return { from, to };
 }
 
-export async function start({ port = 0, dataDir, home, seedFolder } = {}) {
+export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts = 0, token = null } = {}) {
   const defaultDir = dataDir || (home ? path.join(home, "data") : path.join(root, "data"));
   const station = await openWorkstation(home || defaultDir, defaultDir, seedFolder);
   dataDir = station.get().dataDirectory;
@@ -107,19 +206,53 @@ export async function start({ port = 0, dataDir, home, seedFolder } = {}) {
       const port = req.socket.localPort;
       const allowedHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
       const origin = req.headers.origin;
+      const navigation = req.method === "GET" && req.headers["sec-fetch-mode"] === "navigate";
       if (!allowedHosts.includes(req.headers.host) || (origin && origin !== "http://" + req.headers.host) ||
-          req.headers["sec-fetch-site"] === "cross-site") {
+          (["cross-site", "same-site"].includes(req.headers["sec-fetch-site"]) && !navigation)) {
         send(res, 403, { error: "Open Ledgercraft on this Mac" });
         return;
       }
       res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'");
+      res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'");
+      res.setHeader("Referrer-Policy", "no-referrer");
+      res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+      res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+      res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
       const url = new URL(req.url, "http://127.0.0.1");
       const parts = url.pathname.split("/").filter(Boolean);
-      if (req.method === "GET" && serveStatic(res, url.pathname)) return;
+      if (token) {
+        const bearer = /^Bearer\s+(\S+)$/.exec(req.headers.authorization || "")?.[1];
+        const authorised = sameToken(cookieValue(req, SESSION_COOKIE), token) || sameToken(bearer, token);
+        if (url.pathname === "/" && url.searchParams.has("token")) {
+          if (!sameToken(url.searchParams.get("token"), token)) {
+            res.writeHead(403, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+            res.end(lockedPage(port));
+            return;
+          }
+          // Serve the app directly rather than redirecting: a cookie set on a redirect is not always
+          // replayed on the follow-up request when the navigation started from another app or site.
+          res.setHeader("set-cookie", `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${60 * 60 * 24 * 90}`);
+          res.setHeader("cache-control", "no-store");
+          const html = await readFile(path.join(publicDir, "index.html"));
+          res.writeHead(200, { "content-type": MIME[".html"], "content-length": html.length });
+          res.end(html);
+          return;
+        }
+        if (!authorised) {
+          if (url.pathname === "/" || url.pathname === "/index.html") {
+            res.writeHead(403, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+            res.end(lockedPage(port));
+            return;
+          }
+          if (url.pathname.startsWith("/api/") && url.pathname !== "/api/health") {
+            return send(res, 401, { error: "Open Ledgercraft from the start link shown when it started." });
+          }
+        }
+      }
+      if ((req.method === "GET" || req.method === "HEAD") && await serveStatic(req, res, url.pathname)) return;
 
       if (req.method === "GET" && url.pathname === "/api/health") {
-        return send(res, 200, { app: "financer", instance: process.env.FINANCER_INSTANCE || null });
+        return send(res, 200, { app: "financer", name: "Ledgercraft", version, instance: process.env.FINANCER_INSTANCE || null, resources: await resourceStatus() });
       }
       if (url.pathname === "/api/workstation") {
         if (req.method === "GET") return send(res, 200, station.get());
@@ -267,23 +400,52 @@ export async function start({ port = 0, dataDir, home, seedFolder } = {}) {
 
       send(res, 404, { error: "Not found" });
     } catch (error) {
-      fail(res, error);
+      fail(req, res, error);
     }
   });
 
-  return new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(port, "127.0.0.1", () => resolve(server));
+  const listen = (candidate) => new Promise((resolve, reject) => {
+    const onError = (error) => { server.removeListener("listening", onListening); reject(error); };
+    const onListening = () => { server.removeListener("error", onError); resolve(server); };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(candidate, "127.0.0.1");
   });
+  if (!fallbackPorts) return listen(port);
+  let last;
+  for (let attempt = 0; attempt <= fallbackPorts; attempt += 1) {
+    try { return await listen(port + attempt); }
+    catch (error) {
+      if (error.code !== "EADDRINUSE" || attempt === fallbackPorts) throw error;
+      last = error;
+    }
+  }
+  throw last;
 }
 
 const invoked = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invoked) {
+  const desktop = process.env.FINANCER_DESKTOP === "1";
   const port = Number(process.env.PORT || 4173);
-  const home = process.env.LEDGERCRAFT_HOME || process.env.FINANCER_HOME || path.join(root, ".ledgercraft");
+  // The Mac wrapper sets FINANCER_HOME and must win over a LEDGERCRAFT_HOME inherited from the shell.
+  const home = (desktop && process.env.FINANCER_HOME) || process.env.LEDGERCRAFT_HOME || process.env.FINANCER_HOME || path.join(root, ".ledgercraft");
   const seedFolder = path.join(root, "data", "companies", "specimen-8fe3bf");
-  const server = await start({ port, home, seedFolder });
-  const shutdown = () => { server.close(() => process.exit(0)); server.closeIdleConnections(); };
+  const token = await workstationToken(home, process.env.LEDGERCRAFT_TOKEN);
+  let server;
+  try {
+    server = await start({ port, home, seedFolder, token, fallbackPorts: process.env.PORT || desktop ? 0 : 20 });
+  } catch (error) {
+    if (error.code === "EADDRINUSE") {
+      console.error(`Port ${port} is already in use. Close the other program, or start Ledgercraft with PORT=<number> npm start.`);
+      process.exit(1);
+    }
+    throw error;
+  }
+  const shutdown = () => {
+    server.close(() => process.exit(0));
+    server.closeIdleConnections();
+    setTimeout(() => { server.closeAllConnections(); process.exit(0); }, 3000).unref();
+  };
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);
   const parent = Number(process.env.FINANCER_PARENT_PID);
@@ -294,6 +456,12 @@ if (invoked) {
     }, 1000).unref();
   }
   const address = server.address();
-  console.log(`Ledgercraft is open at http://127.0.0.1:${address.port}`);
+  if (address.port !== port) console.warn(`Port ${port} was busy; using ${address.port} instead.`);
+  console.log(desktop
+    ? `Ledgercraft ${version} is open at http://127.0.0.1:${address.port} (books in ${home})`
+    : `Ledgercraft ${version} is open. Books are in ${home}.\nOpen this link once in your browser: http://127.0.0.1:${address.port}/?token=${token}`);
   await access(publicDir);
+  const resources = await resourceStatus();
+  const missing = Object.entries(resources).filter(([, present]) => !present).map(([name]) => name);
+  if (missing.length) console.warn(`Reference resources not installed (${missing.join(", ")}). GST returns and HSN search need them: run "npm run setup".`);
 }

@@ -15,9 +15,15 @@ npm run setup
 npm start
 ```
 
-Open [127.0.0.1:4173](http://127.0.0.1:4173). Setup prepares the reference resources and public test fixtures. Once those resources are available, normal book entry and reports run locally.
+The server prints a start link such as `http://127.0.0.1:4173/?token=…`. Open it once; it sets a cookie so that only your browser, and not other programs on the computer, can use the books. Setup downloads and verifies the GSTN reference resources and the public Tally test fixtures. Book entry and reports work without them; HSN search and the GSTR-1 workbook export need them, and the app says so when they are missing.
 
-A fresh workspace includes a synthetic specimen company. Use the company chooser to create your own books. Set the books-beginning date before entering opening balances. Each company has its own masters, vouchers and reporting period.
+A fresh workspace includes a synthetic specimen company. Use the company chooser to create your own books. Set the books-beginning date before entering opening balances. Each company has its own masters and vouchers, and one reporting period that every statement follows.
+
+To see every screen with a lived-in book, seed the demonstration company:
+
+```sh
+npm run demo
+```
 
 To build the native Mac app:
 
@@ -27,15 +33,25 @@ bash mac/build.sh
 
 The build creates `dist/Ledgercraft.app`. It requires macOS 13 or later and Xcode Command Line Tools, and bundles the selected Node runtime, interface and fonts. See [Mac build instructions](mac/README.md) for installation and verification.
 
+## The interface
+
+![Owner review of the demonstration company: cash and bank, receivables, payables, net profit and recent vouchers on a white ruled page beside a dark navigation cover](docs/screenshots/owner-review.jpg)
+
+Ledgercraft is laid out like a ledger: a dark cover on the left carries the navigation, the white page on the right carries the books, and every money column is framed by a red hairline the way ruled ledger paper frames its amount columns. Totals close with a double red rule. The pages follow your system's light or dark appearance until you choose one with the button at the foot of the cover. The reporting period sits in the top bar and applies to every statement. [docs/DESIGN.md](docs/DESIGN.md) records the design decisions and the shared components.
+
+| Invoice register | Trial balance | Voucher entry, dark pages |
+| --- | --- | --- |
+| ![Invoice register listing sales and purchase documents with party GSTINs and ruled money columns](docs/screenshots/invoice-register.jpg) | ![Trial balance grouped by account group with opening, period and closing columns](docs/screenshots/trial-balance.jpg) | ![Payment voucher entry in dark pages with the balance indicator](docs/screenshots/voucher-dark.jpg) |
+
 ## Daily books
 
 The company review shows cash and bank, receivables, payables, period profit and recent vouchers. Click a balance to open the corresponding statement. The sidebar opens the day book, ledgers, trial balance, profit and loss, balance sheet and group summaries.
 
 Create account groups and ledgers before passing entries. Ledgercraft supports Receipt, Payment, Contra, Journal, Sales, Purchase, Debit Note and Credit Note vouchers. Amounts are stored in paise, and every posted voucher must balance. Opening balances and dated vouchers feed the same reports.
 
-On Mac, use ⌘K to find a ledger, voucher number, narration or page. ⌘N opens a new receipt. In voucher entry, Option+Return adds a line when the voucher balances or fills the missing amount when it does not. A row with a debit locks its credit field until the debit is cleared, and vice versa. ⌘Return posts a valid balanced entry.
+Use ⌘K (Ctrl+K in a browser on other systems) to find a ledger, voucher number, narration or page. On Mac, ⌘N opens a new receipt. In voucher entry, Return moves to the next field, Option+Return adds a line when the voucher balances or fills the missing amount when it does not, and ⌘Return passes a balanced entry. A row with a debit locks its credit field until the debit is cleared, and vice versa. A voucher you leave half-entered is kept as a draft and restored when you return to that voucher type.
 
-Open a saved voucher from the day book to alter, duplicate or print it. Changes that would invalidate the posted books are rejected.
+Open a saved voucher from the day book to alter, duplicate or print it. Changes that would invalidate the posted books are rejected. Errors appear next to the form they belong to.
 
 ## GST billing and review
 
@@ -93,7 +109,7 @@ python3 -m pip install -r requirements-test.txt
 npm test
 ```
 
-The suite covers accounting, storage, reconciliation, stock, GST preparation, migration and backup restoration. Test books are synthetic or come from documented public examples. The fixture READMEs and source manifests describe their origins. Optional integration checks use PowerShell, LibreOffice or macOS WebKit when their prerequisites are available; the core test run does not prove a licensed Tally round trip or portal acceptance.
+The suite covers accounting, storage, reconciliation, stock, GST preparation, migration and backup restoration. Tests that need the downloaded GSTN resources or the public Tally fixtures skip, naming the missing file, when `npm run setup` has not been run. A ready-to-enable GitHub Actions workflow at [tools/ci/github-tests.yml](tools/ci/github-tests.yml) runs the suite on macOS and Linux for every push; copy it to `.github/workflows/` from a checkout whose token has the `workflow` scope. Test books are synthetic or come from documented public examples. The fixture READMEs and source manifests describe their origins. Optional integration checks use PowerShell, LibreOffice or macOS WebKit when their prerequisites are available; the core test run does not prove a licensed Tally round trip or portal acceptance.
 
 The project uses JavaScript modules and Node's built-in test runner. The main directories are:
 
@@ -105,7 +121,7 @@ The project uses JavaScript modules and Node's built-in test runner. The main di
 | `test/` | Automated tests and documented fixtures |
 | `tools/` | Resource preparation, verification and benchmarks |
 
-Ledgercraft currently runs as a single-machine workspace bound to loopback. Shared-server access controls and coordinated multi-user editing are future work. The [roadmap](ROADMAP.md) records the remaining product scope.
+Ledgercraft currently runs as a single-machine workspace bound to loopback. Shared-server access controls and coordinated multi-user editing are future work. The [roadmap](ROADMAP.md) records the remaining product scope, the [changelog](CHANGELOG.md) records what changed in each release, [CONTRIBUTING.md](CONTRIBUTING.md) explains how to set up and propose a change, and [SECURITY.md](SECURITY.md) describes what the loopback server does and does not protect.
 
 ## License
 

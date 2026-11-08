@@ -12,6 +12,8 @@ final class FinancerApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var quitting = false
     private var failureShown = false
     private let instance = UUID().uuidString
+    /// Pages may use the local API only with this secret. A test harness may supply it through the environment.
+    private let sessionToken = ProcessInfo.processInfo.environment["LEDGERCRAFT_TOKEN"] ?? UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     private var baseURL = URL(string: "http://127.0.0.1:4173")!
     private var home = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Ledgercraft", isDirectory: true)
@@ -62,7 +64,7 @@ final class FinancerApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         window.isReleasedWhenClosed = false
         window.title = "Ledgercraft"
         window.minSize = NSSize(width: 860, height: 620)
-        window.backgroundColor = NSColor(calibratedRed: 0.894, green: 0.863, blue: 0.796, alpha: 1)
+        window.backgroundColor = NSColor(calibratedRed: 0.902, green: 0.910, blue: 0.902, alpha: 1)
         window.contentView = webView
         window.setFrameAutosaveName("LedgercraftMainWindow")
         if !window.setFrameUsingName("LedgercraftMainWindow") { window.center() }
@@ -118,6 +120,7 @@ final class FinancerApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             environment["FINANCER_HOME"] = home.path
             environment["FINANCER_DESKTOP"] = "1"
             environment["FINANCER_INSTANCE"] = instance
+            environment["LEDGERCRAFT_TOKEN"] = sessionToken
             environment["FINANCER_PARENT_PID"] = String(ProcessInfo.processInfo.processIdentifier)
             environment["NODE_OPTIONS"] = nil
             environment["NODE_ENV"] = "production"
@@ -155,7 +158,10 @@ final class FinancerApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    json["app"] as? String == "financer",
                    json["instance"] as? String == self.instance {
-                    self.webView.load(URLRequest(url: self.baseURL))
+                    var start = URLComponents(url: self.baseURL, resolvingAgainstBaseURL: false)!
+                    start.path = "/"
+                    start.queryItems = [URLQueryItem(name: "token", value: self.sessionToken)]
+                    self.webView.load(URLRequest(url: start.url!))
                     return
                 }
                 if let response = response as? HTTPURLResponse, response.statusCode < 500 {

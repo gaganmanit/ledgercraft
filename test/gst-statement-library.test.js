@@ -8,8 +8,10 @@ import { start } from "../server.js";
 import { createStore } from "../lib/store.js";
 import { gstinCheckDigit } from "../lib/gst.js";
 import { verifyItcStatement } from "../lib/gst-statement-library.js";
+import { needsResources, GSTR1_TEMPLATE } from "./helpers/resources.mjs";
 
-test("2B workpapers retain original bytes, revised versions and evidence links through native and full-source Tally restore", async()=>{
+test("2B workpapers retain original bytes, revised versions and evidence links through native and full-source Tally restore", async (t) =>{
+  if (!needsResources(t, GSTR1_TEMPLATE)) return;
   const dataDir=await mkdtemp(path.join(tmpdir(),"financer-statement-library-"));
   const server=await start({port:0,dataDir}), origin="http://127.0.0.1:"+server.address().port;
   const store=createStore(dataDir);

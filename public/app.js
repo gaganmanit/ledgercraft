@@ -43,14 +43,27 @@ function still(token) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    method: options.method || "GET",
-    headers: options.body ? { "content-type": "application/json" } : undefined,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      method: options.method || "GET",
+      headers: options.body ? { "content-type": "application/json" } : undefined,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+  } catch {
+    throw new Error("Ledgercraft could not reach its local server. Check that it is still running, then try again.");
+  }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "The book could not be updated");
+  if (!response.ok) throw new Error(data.error || (options.method && options.method !== "GET" ? "The book could not be updated" : "That page could not be loaded"));
   return data;
+}
+
+function focusNext(form, from) {
+  const controls = [...form.querySelectorAll("input, select, textarea, button")].filter(el => !el.disabled && el.offsetParent !== null);
+  const next = controls[controls.indexOf(from) + 1];
+  if (next) next.focus();
+  if (next && typeof next.select === "function" && next.tagName === "INPUT") next.select();
+  return Boolean(next);
 }
 
 function parseRoute() {
@@ -121,30 +134,42 @@ function finderRoutes(id) {
   return items;
 }
 
-function page({ company, folio, kicker, title, lede, error, status, body }) {
+function themeLabel() {
+  return document.documentElement.dataset.theme === "dark" ? "Light pages" : "Dark pages";
+}
+
+function page({ company, title, lede, error, status, body }) {
   const book = company ? "#/c/" + encodeURIComponent(company.id) : "#/";
   const current = parseRoute().name;
+  const link = (href, label, selected) => `<a href="${href}"${selected ? ' aria-current="page"' : ""}>${esc(label)}</a>`;
   const nav = company ? destinations.map(([group, links]) => `<section class="nav-group"><h2>${esc(group)}</h2>${links.map(([path, label]) => {
     if (path === "v/Receipt" && current === "home") return "";
     const selected = (path || "home") === current || (path.startsWith("v/") && current === "voucher");
-    return `<a href="${book}${path ? "/" + path : ""}"${selected ? ' aria-current="page"' : ""}>${esc(label)}</a>`;
-  }).join("")}</section>`).join("") : '<section class="nav-group"><h2>Workspace</h2><a href="#/">Companies</a><a href="#/transfer">Import a company</a><a href="#/tally-import">Import Tally data</a></section>';
-  return `<div class="workspace">
-    <aside class="rail"><a class="wordmark" href="${book}"><span class="book-spine" aria-hidden="true"></span>Ledgercraft</a>
-      <a class="company-switch" href="#/"><small>Company</small><strong>${esc(company?.name || "Choose a company")}</strong><span aria-hidden="true">⇅</span></a>
+    return link(`${book}${path ? "/" + path : ""}`, label, selected);
+  }).join("")}</section>`).join("") : `<section class="nav-group"><h2>Workspace</h2>${link("#/", "Companies", current === "index")}${link("#/transfer", "Import a company", current === "transfer")}${link("#/tally-import", "Import Tally data", current === "tally-import")}</section>`;
+  const range = company ? readPeriod(company) : null;
+  const specimen = company && /^specimen-[0-9a-f]{6}$/.test(company.id) && company.name === "North Mill Traders";
+  const period = company ? `<span class="fy">FY ${esc(fyLabel(range.to))}</span>
+      <form class="period-control" id="period-control" data-company="${esc(company.id)}" data-books-from="${esc(company.booksFrom)}" aria-label="Reporting period">
+        <label>From <input type="date" name="from" required min="${esc(company.booksFrom)}" value="${esc(range.from)}" /></label>
+        <label>to <input type="date" name="to" required min="${esc(company.booksFrom)}" value="${esc(range.to)}" /></label>
+      </form>` : "";
+  return `<div class="app">
+    <aside class="cover"><a class="brand" href="${book}"><span class="brand-mark" aria-hidden="true"></span>Ledgercraft</a>
       <nav aria-label="Book navigation">${nav}</nav>
-      <div class="rail-foot"><span class="local-dot" aria-hidden="true"></span>Local books · INR</div>
+      <div class="cover-foot"><button type="button" class="theme-toggle" data-theme-toggle>${themeLabel()}</button><p><span class="local-dot" aria-hidden="true"></span>Books stay on this Mac</p></div>
     </aside>
-    <div class="desk"><header class="desk-bar"><span>${esc(company?.name || "Companies")} <span aria-hidden="true">/</span> ${esc(kicker || title)}</span><button type="button" class="search-button" data-find>Find <kbd>⌘ K</kbd></button></header>
-    <div class="paper"><main class="sheet" id="sheet" tabindex="-1">
-      <header class="sheet-head"><div class="sheet-meta"><span>${company ? (/^specimen-[0-9a-f]{6}$/.test(company.id) && company.name === "North Mill Traders" ? "Specimen company" : "Company ledger") : "Ledgercraft"}</span><span>${company ? "FY " + esc(fyLabel(readPeriod(company).to)) + " · INR" : "This Mac"}</span></div>
-        <div class="sheet-title"><h1>${esc(title)}</h1>${folio ? `<span class="folio-mark" aria-hidden="true">${esc(folio)}</span>` : ""}</div>
-        ${lede ? `<p class="lede">${esc(lede)}</p>` : ""}</header>
+    <div class="pages"><header class="topbar">
+      <a class="company-switch" href="#/"><strong>${esc(company?.name || "Companies")}</strong><span>${company ? (specimen ? "Specimen company" : "Switch company") : "Choose a company to open its books"}</span></a>
+      ${period}
+      <button type="button" class="find-button" data-find>Find <kbd>⌘K</kbd></button></header>
+    <main class="sheet" id="sheet" tabindex="-1">
+      <header class="sheet-head"><h1 tabindex="-1">${esc(title)}</h1>${lede ? `<p class="lede">${esc(lede)}</p>` : ""}</header>
       <div class="print-company">${esc(company?.name || "")}</div>
       ${error ? `<p class="alert" role="alert">${esc(error)}</p>` : ""}
       ${status ? `<p class="status" role="status">${esc(status)}</p>` : ""}
       ${body}
-    </main></div></div></div>`;
+    </main></div></div>`;
 }
 
 function parentName(company, group) {
@@ -265,23 +290,10 @@ function bindDifference(form) {
 }
 
 function periodBar(range) {
-  return `<form class="period" id="period">
-    <label>From <input type="date" name="from" required value="${esc(range.from)}" /></label>
-    <label>To <input type="date" name="to" required value="${esc(range.to)}" /></label>
-    <button type="submit">Apply period</button>
-    <button type="button" class="ghost" data-print-sheet>Print</button>
-  </form><p class="only-print">${esc(dateLabel(range.from))} – ${esc(dateLabel(range.to))}</p>`;
+  return `<div class="sheet-tools"><span class="period-echo">${esc(dateLabel(range.from))} to ${esc(dateLabel(range.to))} <button type="button" class="link" data-focus-period>Change period</button></span><button type="button" class="ghost" data-print-sheet>Print</button></div><p class="only-print">${esc(dateLabel(range.from))} to ${esc(dateLabel(range.to))}</p>`;
 }
-function bindPeriod(company) {
-  document.querySelector("#period")?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    let from = String(data.get("from"));
-    let to = String(data.get("to"));
-    if (to < from) [from, to] = [to, from];
-    savePeriod(company.id, from, to);
-    render();
-  });
+function bindPeriod() {
+  /* The reporting period is set once in the top bar; see the delegated change handler below. */
 }
 
 function figure(paise, dc = "") {
@@ -302,9 +314,9 @@ async function viewIndex(token, error = "") {
   const list = companies.length
     ? `<ol class="index">${companies
         .map(
-          (company, index) => `<li><a href="#/c/${esc(company.id)}">
-            <span class="idx">${String(index + 1).padStart(2, "0")}</span>
-            <span><strong>${esc(company.name)}</strong><em>${bookDetail(company) ? esc(bookDetail(company)) + " · " : ""}Books from ${esc(dateLabel(company.booksFrom))}</em></span>
+          (company) => `<li><a href="#/c/${esc(company.id)}">
+            <span><strong>${esc(company.name)}</strong><em>Books from ${esc(dateLabel(company.booksFrom))}</em>${bookDetail(company) ? `<em>${esc(bookDetail(company))}</em>` : ""}</span>
+            <span class="open">Open</span>
           </a></li>`,
         )
         .join("")}</ol>`
@@ -318,7 +330,7 @@ async function viewIndex(token, error = "") {
     body: `${list}
       <form class="launch-pref" id="launch-pref"><label>On launch
         <select name="launch"><option value="last"${settings.loadLastCompany ? " selected" : ""}>Reopen the last company</option><option value=""${!settings.loadLastCompany && !settings.defaultCompany ? " selected" : ""}>Choose a company</option>
-        ${companies.map(c => `<option value="${esc(c.id)}"${!settings.loadLastCompany && settings.defaultCompany === c.id ? " selected" : ""}>Open ${esc(c.name)}${bookDetail(c) ? " · " + esc(bookDetail(c)) : ""}</option>`).join("")}</select></label><button type="submit" class="ghost">Save preference</button><span role="status"></span></form>
+        ${companies.map(c => `<option value="${esc(c.id)}"${!settings.loadLastCompany && settings.defaultCompany === c.id ? " selected" : ""}>Open ${esc(c.name)}${bookDetail(c) ? " (" + esc(bookDetail(c)) + ")" : ""}</option>`).join("")}</select></label><button type="submit" class="ghost">Save preference</button><span role="status"></span></form>
       <form class="foot-form" id="new-company">
         <h2>Open a new book</h2>
         <label>Company name <input name="name" required minlength="2" maxlength="80" autocomplete="organization" /></label>
@@ -336,12 +348,13 @@ async function viewIndex(token, error = "") {
     try {
       await api("/api/workstation", { method: "PUT", body: { loadLastCompany: choice === "last", defaultCompany: choice === "last" ? settings.defaultCompany : choice || null } });
       form.querySelector("[role=status]").textContent = "Preference saved.";
-    } catch (err) { showAlert(err.message); }
+    } catch (err) { showAlert(err.message, form); }
   });
   document.querySelector("#new-company").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const button = event.currentTarget.querySelector("[type=submit]");
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const button = form.querySelector("[type=submit]");
     button.disabled = true;
     try {
       const created = await api("/api/companies", {
@@ -351,30 +364,49 @@ async function viewIndex(token, error = "") {
       location.hash = `#/c/${created.company.id}`;
     } catch (err) {
       button.disabled = false;
-      showAlert(err.message);
+      showAlert(err.message, form);
     }
   });
   document.querySelector("#specimen").addEventListener("click", async (event) => {
-    event.currentTarget.disabled = true;
+    const button = event.currentTarget;
+    button.disabled = true;
     try {
       const created = await api("/api/specimen", { method: "POST", body: {} });
       location.hash = `#/c/${created.company.id}`;
     } catch (err) {
-      event.currentTarget.disabled = false;
-      showAlert(err.message);
+      button.disabled = false;
+      showAlert(err.message, document.querySelector("#new-company"));
     }
   });
 }
 
-function showAlert(message) {
-  let alert = document.querySelector(".alert");
-  if (!alert) {
-    alert = document.createElement("p");
-    alert.className = "alert";
-    alert.setAttribute("role", "alert");
-    document.querySelector(".sheet-head").after(alert);
+function showAlert(message, form) {
+  let alert;
+  if (form instanceof Element) {
+    alert = form.querySelector("[data-form-error]");
+    if (!alert) {
+      alert = document.createElement("p");
+      alert.className = "form-message alert";
+      alert.setAttribute("role", "alert");
+      alert.setAttribute("tabindex", "-1");
+      alert.dataset.formError = "1";
+      const heading = form.querySelector(":scope > h2");
+      if (heading) heading.after(alert); else form.prepend(alert);
+    }
+  } else {
+    alert = document.querySelector("[data-page-error]");
+    if (!alert) {
+      alert = document.createElement("p");
+      alert.className = "alert";
+      alert.setAttribute("role", "alert");
+      alert.setAttribute("tabindex", "-1");
+      alert.dataset.pageError = "1";
+      document.querySelector(".sheet-head").after(alert);
+    }
   }
   alert.textContent = message;
+  alert.scrollIntoView({ block: "nearest" });
+  alert.focus({ preventScroll: true });
 }
 
 async function viewHome(token, id) {
@@ -392,14 +424,11 @@ async function viewHome(token, id) {
       <div class="balance-strip">${balance("Cash & bank", review.cashBank, "cash-bank", review.cashBank < 0 ? "Cr" : "")}
       ${balance(review.receivable < 0 ? "Customer advances" : "Net receivables", review.receivable, "outstanding/debtors")}
       ${balance(review.payable < 0 ? "Supplier advances" : "Net payables", review.payable, "outstanding/creditors")}</div>
-      <div class="profit-rule"><span>${review.netProfit < 0 ? "Net loss" : "Net profit"} <small>${esc(dateLabel(range.from))} – ${esc(dateLabel(range.to))}</small></span><a href="${book}/pl">${review.netProfit === null ? "Stock valuation pending" : esc(money(review.netProfit))} ↗</a></div>
-      ${review.workbookOpeningScope ? `<p class="quiet"><a href="${book}/tally-source">Tally workbook basis ↗</a> · ${esc(review.workbookOpeningScope.message)}</p>` : ""}
-      ${review.difference ? `<p class="alert"><a href="${book}/tb">Opening balances differ by ${esc(money(review.difference))}. Review trial balance ↗</a></p>` : ""}
+      <div class="profit-rule"><span>${review.netProfit < 0 ? "Net loss" : "Net profit"} <small>${esc(dateLabel(range.from))} – ${esc(dateLabel(range.to))}</small></span><a href="${book}/pl">${review.netProfit === null ? "Stock valuation pending" : esc(money(review.netProfit))}</a></div>
+      ${review.workbookOpeningScope ? `<p class="quiet"><a href="${book}/tally-source">Tally workbook basis</a> · ${esc(review.workbookOpeningScope.message)}</p>` : ""}
+      ${review.difference ? `<p class="alert"><a href="${book}/tb">Opening balances differ by ${esc(money(review.difference))}. Review trial balance</a></p>` : ""}
       <section class="latest"><div class="section-title"><h2>Recent vouchers</h2></div>
-      ${review.latest.length ? `<table><thead><tr><th>Date</th><th>Voucher</th><th>Particulars</th><th class="figure">Amount (₹)</th></tr></thead><tbody>${review.latest.map(v => `<tr><td class="date-cell">${esc(dateLabel(v.date))}</td><td><a class="voucher-ref" href="${book}/v/${encodeURIComponent(v.type)}/${encodeURIComponent(v.id)}">${esc(v.number)}</a></td><td>${esc(v.narration || v.particulars)}</td><td class="figure">${esc(formatINR(v.paise))}</td></tr>`).join("")}</tbody></table>` : '<p class="empty">No vouchers in this period.</p>'}</section>
-
-      <details class="range-details"><summary>Report period</summary>${periodBar(range)}</details>` });
-  bindPeriod(company);
+      ${review.latest.length ? `<table><thead><tr><th>Date</th><th>Voucher</th><th>Particulars</th><th class="figure">Amount (₹)</th></tr></thead><tbody>${review.latest.map(v => `<tr><td class="date-cell">${esc(dateLabel(v.date))}</td><td><a class="voucher-ref" href="${book}/v/${encodeURIComponent(v.type)}/${encodeURIComponent(v.id)}">${esc(v.number)}</a></td><td>${esc(v.narration || v.particulars)}</td><td class="figure">${esc(formatINR(v.paise))}</td></tr>`).join("")}</tbody></table>` : '<p class="empty">No vouchers in this period.</p>'}</section>` });
 }
 
 function groupPath(company, groupId) {
@@ -468,7 +497,7 @@ async function viewGroups(token, id) {
         method: editing ? "PUT" : "POST", body: { name: form.elements.name.value, parentId: form.elements.parentId.value, expected: editing ? { name: editing.name } : undefined },
       });
       render();
-    } catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message); }
+    } catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message, form); }
   });
   document.querySelector("#group-remove").addEventListener("click", async (event) => {
     if (saving || !editing || !confirm(`Remove group “${editing.name}”?`)) return;
@@ -477,7 +506,7 @@ async function viewGroups(token, id) {
     button.disabled = true;
     const unlock = lockEntryForm(form);
     try { await api(`/api/companies/${encodeURIComponent(id)}/groups/${encodeURIComponent(editing.id)}`, { method: "DELETE" }); render(); }
-    catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message); }
+    catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message, form); }
   });
 }
 
@@ -544,7 +573,7 @@ async function viewLedgers(token, id) {
         method: editing ? "PUT" : "POST", body: { name: form.elements.name.value, groupId: form.elements.groupId.value, openingPaise: parseRupees(form.elements.opening.value), openingDc: form.elements.openingDc.value, expected: editing ? { name: editing.name, groupId: editing.groupId, opening: editing.opening } : undefined },
       });
       render();
-    } catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message); }
+    } catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message, form); }
   });
   document.querySelector("#ledger-remove").addEventListener("click", async (event) => {
     if (saving || !editing || !confirm(`Remove ledger “${editing.name}”?`)) return;
@@ -553,7 +582,7 @@ async function viewLedgers(token, id) {
     button.disabled = true;
     const unlock = lockEntryForm(form);
     try { await api(`/api/companies/${encodeURIComponent(id)}/ledgers/${encodeURIComponent(editing.id)}`, { method: "DELETE" }); render(); }
-    catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message); }
+    catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message, form); }
   });
 }
 
@@ -576,26 +605,47 @@ async function viewVoucher(token, id, type, voucherId) {
     try { duplicate = JSON.parse(sessionStorage.getItem(duplicateKey) || "null"); } catch {}
     sessionStorage.removeItem(duplicateKey);
   }
-  const source = existing || duplicate;
+  const draftKey = `financer-voucher-draft-${id}-${type}`;
+  let draft = null;
+  if (!existing && !duplicate) {
+    try { draft = JSON.parse(sessionStorage.getItem(draftKey) || "null"); } catch { draft = null; }
+    if (draft && !(draft.lines?.some(line => line.ledgerId || line.debit || line.credit) || draft.narration)) draft = null;
+  }
+  const draftSource = draft ? { date: draft.date, number: draft.number, narration: draft.narration, lines: draft.lines.map(line => {
+    let paise = 0;
+    try { paise = parseRupees(line.debit || line.credit || ""); } catch { paise = 0; }
+    return { ledgerId: line.ledgerId, dc: line.debit ? "Dr" : "Cr", paise };
+  }) } : null;
+  const source = existing || duplicate || draftSource;
   const lines = source?.lines?.length ? source.lines : [{}, {}];
   const selectedDate = source?.date || sessionStorage.getItem(dateKey) || todayISO();
   root.innerHTML = page({ company, folio: MARK[type] || "Vc", kicker: type,
-    title: existing ? `Alter ${existing.number}` : type, lede: HINT[type], status: takeFlash(),
+    title: existing ? `Alter ${existing.number}` : type, lede: HINT[type], status: takeFlash() || (draft ? `Your unsaved ${type.toLowerCase()} was restored.` : ""),
     body: `<div class="actions"><a href="#/c/${esc(id)}/daybook?type=${encodeURIComponent(type)}">${esc(type)} register</a>${existing ? `<a href="#/c/${esc(id)}/voucher-print/${esc(existing.id)}">Print voucher</a>` : ""}</div>
     <form id="voucher"><div class="period">
       <label>Date <input type="date" name="date" required min="${esc(company.booksFrom)}" value="${esc(selectedDate)}" /></label>
-      <label>Number <input name="number" required maxlength="24" value="${esc(existing?.number || nextNumbers[type])}" /></label></div>
+      <label>Number <input name="number" required maxlength="24" value="${esc(existing?.number || draft?.number || nextNumbers[type])}" /></label></div>
       <table class="voucher-table"><thead><tr><th>Particulars</th><th class="figure">Debit</th><th class="figure">Credit</th></tr></thead>
       <tbody id="lines">${lines.map((line, index) => lineRow(company, line, index)).join("")}</tbody></table>
       <div class="actions add-line"><button type="button" class="ghost" id="line-action"><span>Add line</span> <kbd aria-hidden="true">⌥↩</kbd></button></div>
       <label class="narration">Narration <textarea name="narration" maxlength="280">${esc(source?.narration || "")}</textarea></label>
       <p class="difference" aria-live="polite"></p><div class="actions"><button type="submit" data-pass>${existing ? "Save the voucher" : "Pass voucher"}</button>
       ${existing ? `<button type="button" class="ghost" id="duplicate">Duplicate as new</button><button type="button" class="danger" id="remove">Remove voucher</button>` : ""}</div>
-      <p class="quiet">⌘ Return to save</p></form>` });
+      ${draft ? `<button type="button" class="ghost" id="discard-draft">Discard draft</button>` : ""}</div>
+      <p class="quiet">Return moves to the next field. ⌘ Return passes the voucher.</p></form>` });
   const form = document.querySelector("#voucher");
   let saving = false;
   const requestId = crypto.randomUUID();
   bindDifference(form);
+  const rememberDraft = () => {
+    if (existing) return;
+    const snapshot = { date: form.elements.date.value, number: form.elements.number.value, narration: form.elements.narration.value,
+      lines: [...form.querySelectorAll("#lines tr")].map(tr => ({ ledgerId: tr.querySelector("[name=ledger]").value, debit: tr.querySelector("[name=debit]").value, credit: tr.querySelector("[name=credit]").value })) };
+    try { sessionStorage.setItem(draftKey, JSON.stringify(snapshot)); } catch { /* storage full or unavailable */ }
+  };
+  form.addEventListener("input", rememberDraft);
+  form.addEventListener("change", rememberDraft);
+  document.querySelector("#discard-draft")?.addEventListener("click", () => { sessionStorage.removeItem(draftKey); render(); });
   const lineAction = () => {
     if (saving || form.querySelector("#line-action").disabled) return;
     const body = form.querySelector("#lines");
@@ -610,10 +660,19 @@ async function viewVoucher(token, id, type, voucherId) {
   };
   form.querySelector("#line-action").addEventListener("click", lineAction);
   form.addEventListener("keydown", (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+    if (event.key !== "Enter") return;
+    if (event.ctrlKey || event.metaKey) {
       event.preventDefault();
       if (!saving && !form.querySelector("[data-pass]").disabled) form.requestSubmit();
-    } else if (event.altKey && event.key === "Enter") { event.preventDefault(); lineAction(); }
+    } else if (event.altKey) { event.preventDefault(); lineAction(); }
+    else if (event.target.matches("input, select")) {
+      event.preventDefault();
+      const row = event.target.closest("#lines tr");
+      const lastRow = row && row === form.querySelector("#lines tr:last-child");
+      const lastField = lastRow && event.target.name === "credit";
+      if (lastField && !form.querySelector("#line-action").disabled) lineAction();
+      else if (!focusNext(form, event.target)) form.elements.narration.focus();
+    }
   });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -627,11 +686,12 @@ async function viewVoucher(token, id, type, voucherId) {
       const path = `/api/companies/${encodeURIComponent(id)}/vouchers${existing ? `/${encodeURIComponent(existing.id)}` : ""}`;
       unlock = lockEntryForm(form);
       const saved = await api(path, { method: existing ? "PUT" : "POST", body: payload });
+      sessionStorage.removeItem(draftKey);
       sessionStorage.setItem(dateKey, saved.voucher.date);
       sessionStorage.setItem("financer-flash", `${saved.voucher.number} ${existing ? "saved" : "passed"}.`);
       const next = `#/c/${id}/v/${encodeURIComponent(type)}`;
       if (location.hash === next) render(); else location.hash = next;
-    } catch (error) { unlock(); saving = false; showAlert(error.message); bindDifference(form); }
+    } catch (error) { unlock(); saving = false; showAlert(error.message, form); bindDifference(form); }
   });
   document.querySelector("#duplicate")?.addEventListener("click", () => {
     sessionStorage.setItem(duplicateKey, JSON.stringify(existing));
@@ -642,7 +702,7 @@ async function viewVoucher(token, id, type, voucherId) {
     const button = event.currentTarget;
     button.disabled = true;
     try { await api(`/api/companies/${encodeURIComponent(id)}/vouchers/${encodeURIComponent(existing.id)}`, { method: "DELETE" }); location.hash = `#/c/${id}/daybook`; }
-    catch (error) { button.disabled = false; showAlert(error.message); }
+    catch (error) { button.disabled = false; showAlert(error.message, form); }
   });
   if (!existing) form.querySelector("[name=ledger]")?.focus();
 }
@@ -658,7 +718,7 @@ async function viewDaybook(token, id) {
   const rows = report.rows.map((row) => {
     const narration = row.narration || "";
     return `<tr data-book-row data-type="${esc(row.type)}" data-search="${esc(`${row.number} ${row.particulars} ${narration}`.toLowerCase())}" data-paise="${row.paise}">
-      <td>${esc(row.date.split("-").reverse().join("-"))}</td><td><a href="#/c/${esc(id)}/v/${encodeURIComponent(row.type)}/${encodeURIComponent(row.id)}">${esc(row.number)}</a></td><td>${esc(row.type)}</td>
+      <td class="date-cell">${esc(dateLabel(row.date))}</td><td><a class="voucher-ref" href="#/c/${esc(id)}/v/${encodeURIComponent(row.type)}/${encodeURIComponent(row.id)}">${esc(row.number)}</a></td><td>${esc(row.type)}</td>
       <td>${esc(row.particulars)}${narration ? `<div class="quiet">${esc(narration)}</div>` : ""}</td><td class="figure">${esc(formatINR(row.paise))}</td></tr>`;
   }).join("");
   document.title = `Day book · ${bundle.company.name}`;
@@ -698,7 +758,7 @@ async function viewLedger(token, id, ledgerId) {
   const rows = report.lines
     .map(
       (line) => `<tr>
-        <td>${esc(line.date)}</td>
+        <td class="date-cell">${esc(dateLabel(line.date))}</td>
         <td><a href="#/c/${esc(id)}/v/${encodeURIComponent(line.type)}/${encodeURIComponent(line.voucherId)}">${esc(line.number)}</a></td>
         <td>${esc(line.contra)}${line.narration ? `<div class="quiet">${esc(line.narration)}</div>` : ""}</td>
         ${figure(line.dc === "Dr" ? line.paise : 0)}
@@ -864,7 +924,7 @@ async function viewBalance(token, id) {
     folio: "Bs",
     kicker: "Sheet",
     title: "Balance sheet",
-    lede: `Position as on ${range.to}. Profit here is cumulative from the day the books began.`,
+    lede: `Position as on ${dateLabel(range.to)}. Profit here is cumulative from the day the books began.`,
     body: `${periodBar(range)}${gap}${report.inventory && !report.inventory.complete ? inventoryStatement(report,id) : ""}
       <div class="two">
         <section class="stmt"><h2>Liabilities</h2>${sideGroups(report.liabilityGroups,id,range.to)}${profit}
@@ -878,14 +938,37 @@ async function viewBalance(token, id) {
   bindPeriod(bundle.company);
 }
 
+let lastRenderedHash = null;
+const live = document.createElement("div");
+live.className = "sr";
+live.setAttribute("aria-live", "polite");
+document.body.append(live);
+
+function afterRender(token) {
+  if (!still(token)) return;
+  const moved = location.hash !== lastRenderedHash;
+  lastRenderedHash = location.hash;
+  const active = document.activeElement;
+  if (moved && (!active || active === document.body || !root.contains(active))) root.querySelector("h1")?.focus({ preventScroll: true });
+  const status = root.querySelector(".status, [data-page-error]");
+  live.textContent = status ? status.textContent : "";
+}
+
 async function render() {
   const token = ++renderToken;
+  try {
+    await renderRoute(token);
+  } finally {
+    afterRender(token);
+  }
+}
+
+async function renderRoute(token) {
   const route = parseRoute();
   try {
     if (route.id && route.id !== rememberedCompany) {
-      await api("/api/workstation", { method: "PUT", body: { lastCompany: route.id } });
-      if (!still(token)) return;
       rememberedCompany = route.id;
+      api("/api/workstation", { method: "PUT", body: { lastCompany: route.id } }).catch(() => { rememberedCompany = null; });
     }
     const ui = { root, api, still, page, esc, readPeriod, periodBar, bindPeriod, formatINR, todayISO };
     if (route.name === "bank-reconciliation" || route.name === "bill-outstanding") {
@@ -940,11 +1023,10 @@ async function render() {
     if (!still(token)) return;
     document.title = "Ledgercraft";
     root.innerHTML = page({
-      folio: "\u2014",
-      kicker: "Stop",
+      company: null,
       title: "The book did not open",
       error: error.message,
-      body: `<p><a href="#/">Back to the companies</a></p>`,
+      body: `<div class="actions"><button type="button" data-retry>Try again</button><a href="#/">Back to the companies</a></div>`,
     });
   }
 }
@@ -952,7 +1034,34 @@ async function render() {
 let rememberedCompany = null;
 document.addEventListener("click", event => {
   if (event.target.closest("[data-print-sheet]")) window.print();
+  if (event.target.closest("[data-retry]")) render();
   if (event.target.closest(".skip")) { event.preventDefault(); document.querySelector("#sheet")?.focus(); }
+  if (event.target.closest("[data-focus-period]")) { event.preventDefault(); document.querySelector("#period-control [name=from]")?.focus(); }
+  const toggle = event.target.closest("[data-theme-toggle]");
+  if (toggle) {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    try { localStorage.setItem("ledgercraft-theme", next); } catch { /* private mode */ }
+    document.documentElement.dataset.theme = next;
+    toggle.textContent = themeLabel();
+  }
+});
+document.addEventListener("change", event => {
+  const form = event.target.closest("#period-control");
+  if (!form) return;
+  let from = form.elements.from.value;
+  let to = form.elements.to.value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return;
+  if (from < form.dataset.booksFrom) from = form.dataset.booksFrom;
+  if (to < from) [from, to] = [to, from];
+  savePeriod(form.dataset.company, from, to);
+  render();
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", event => {
+  let stored = null;
+  try { stored = localStorage.getItem("ledgercraft-theme"); } catch { /* private mode */ }
+  if (stored) return;
+  document.documentElement.dataset.theme = event.matches ? "dark" : "light";
+  document.querySelector("[data-theme-toggle]")?.replaceChildren(themeLabel());
 });
 window.addEventListener("financer-new-voucher", () => {
   const route = parseRoute(); if (route.id) location.hash = "#/c/" + encodeURIComponent(route.id) + "/v/Receipt";
@@ -960,6 +1069,7 @@ window.addEventListener("financer-new-voucher", () => {
 installFinder({ api, esc, parseRoute, routes: finderRoutes });
 window.addEventListener("hashchange", render);
 async function openDesk() {
+  if (location.search.includes("token=")) history.replaceState(null, "", location.pathname + location.hash);
   if (!location.hash) {
     try {
       const [settings, { companies }] = await Promise.all([api("/api/workstation"), api("/api/companies")]);

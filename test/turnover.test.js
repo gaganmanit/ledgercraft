@@ -8,9 +8,11 @@ import { validateTransfer, companyBackup } from "../lib/transfer.js";
 import { gstinCheckDigit } from "../lib/gst.js";
 import { returnWorkbook } from "../lib/gst-returns.js";
 import { directoryEntries } from "../lib/hsn-directory.js";
+import { needsResources, HSN_DIRECTORY } from "./helpers/resources.mjs";
 const gstin = (prefix) => prefix + gstinCheckDigit(prefix);
 
-test("preceding-year aggregate turnover applies PAN-wide in the correct April financial year", async()=>{
+test("preceding-year aggregate turnover applies PAN-wide in the correct April financial year", async(t)=>{
+  if (!needsResources(t, HSN_DIRECTORY)) return;
   const dir = await mkdtemp(path.join(os.tmpdir(),"financer-turnover-"));
   try {
     const store = createStore(dir);

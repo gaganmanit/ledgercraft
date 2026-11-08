@@ -13,6 +13,7 @@ import { returnWorkbook, worksheetCsv, columns } from '../lib/gst-returns.js';
 import { gstrWorkbook } from '../lib/gst-workbook.js';
 import { createStore } from '../lib/store.js';
 import { companyBackup, validateTransfer } from '../lib/transfer.js';
+import { needsResources, GSTR1_TEMPLATE } from "./helpers/resources.mjs";
 
 const execute = promisify(execFile);
 const gstin = prefix => prefix + gstinCheckDigit(prefix);
@@ -165,7 +166,8 @@ test('withdrawal removes all return effects and a replacement contributes exactl
   assert.equal(report(f,'2026-05').amendments.difference.taxablePaise,10000);
 });
 
-test('all five official amendment worksheets preserve full multi-rate values, original identities, dates and cell types', async () => {
+test('all five official amendment worksheets preserve full multi-rate values, original identities, dates and cell types', async (t) => {
+  if (!needsResources(t, GSTR1_TEMPLATE)) return;
   const f=fixture();
   const consumer={name:'Synthetic consumer',gstin:''};
   const large=document(f,'LARGE/1',{party:consumer},20000000);

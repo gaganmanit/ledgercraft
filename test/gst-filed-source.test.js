@@ -9,6 +9,7 @@ import { start } from "../server.js";
 import { createStore } from "../lib/store.js";
 import { gstinCheckDigit } from "../lib/gst.js";
 import { exchangeDefaults } from "../lib/gst-exchange.js";
+import { needsResources, GSTR1_TEMPLATE } from "./helpers/resources.mjs";
 
 const gstin = first14 => first14 + gstinCheckDigit(first14);
 const seller = gstin("23ABCDE1234F1Z"), buyer = gstin("27PQRST5678L1Z");
@@ -58,7 +59,8 @@ test("reads unregistered notes, credit flags and separately identifies UTGST on 
   assert.equal(note.noteType,"C"); assert.equal(note.exportType,"WOPAY"); assert.equal(note.placeOfSupply,"96");
 });
 
-test("binds the prior filing to exact bytes and a source row through concurrent save, native and full-source Tally backups",async()=>{
+test("binds the prior filing to exact bytes and a source row through concurrent save, native and full-source Tally backups",async (t) =>{
+  if (!needsResources(t, GSTR1_TEMPLATE)) return;
   const dataDir=await mkdtemp(path.join(tmpdir(),"financer-outward-sources-"));
   const server=await start({port:0,dataDir}), origin="http://127.0.0.1:"+server.address().port, store=createStore(dataDir);
   const post=async(route,body,status)=>{

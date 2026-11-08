@@ -1,60 +1,58 @@
-.amendment-workspace { margin-top: 1rem; }
-.amendment-workspace section + section { margin-top: 1.8rem; padding-top: 1.4rem; border-top: 1px solid var(--line-strong); }
-.amendment-workspace h2 { font-family: var(--serif); font-size: 1.5rem; font-weight: 500; margin: 0 0 .8rem; }
-.amendment-workspace h3 { font-size: .93rem; margin: 1rem 0 .6rem; }
-.amendment-intro { max-width: 65ch; color: var(--ink-soft); font-size: .88rem; }
-.amendment-period, .amendment-choose { display: flex; flex-wrap: wrap; align-items: end; gap: .8rem 1rem; margin: 1rem 0 1.3rem; }
-.amendment-period label, .amendment-choose label { min-width: 11rem; flex: 1; font-size: .83rem; }
-.amendment-choose label:last-of-type { flex: 2; }
-.amendment-choose > .amendment-wide { flex: 0 0 100%; margin: 0; }
-.amendment-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.2rem; }
-.amendment-form label { display: grid; align-content: start; gap: .35rem; font-size: .84rem; }
-.amendment-form fieldset { min-width: 0; margin: .2rem 0; padding: 1rem; border: 1px solid var(--line-strong); }
-.amendment-form legend { font-family: var(--serif); font-size: 1.2rem; padding: 0 .4rem; }
-.amendment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem 1.1rem; }
-.amendment-wide { grid-column: 1 / -1; }
-.amendment-form .amendment-check { display: flex; align-items: start; gap: .65rem; line-height: 1.5; }
-.amendment-check input { flex: 0 0 auto; width: 1.1rem; min-height: 1.1rem; margin-top: .15rem; }
-.amendment-form [hidden] { display: none !important; }
-.amendment-form textarea { width: 100%; min-height: 6rem; resize: vertical; }
-.amendment-help, .amendment-status { font-size: .8rem; color: var(--ink-soft); line-height: 1.55; }
-.amendment-status:empty, [data-amendment-error]:empty { display: none; }
-.amendment-identity { display: flex; flex-wrap: wrap; gap: .6rem 1.3rem; padding: .9rem 0; margin-bottom: 1rem; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line-strong); font-size: .85rem; }
-.amendment-identity strong { font-family: var(--mono); font-weight: 500; }
-.amendment-scroll { max-width: 100%; overflow-x: auto; }
-.amendment-scroll table { font-size: .79rem; }
-.amendment-scroll th { font-size: .72rem; }
-.amendment-scroll .figure { white-space: nowrap; }
-.amendment-rates { min-width: 920px; table-layout: fixed; }
-.amendment-rates th:last-child { width: 4rem; }
-.amendment-rates input { min-width: 5.7rem; font: .8rem var(--mono); text-align: right; padding: .5rem .35rem; }
-.amendment-hsn { min-width: 1370px; }
-.amendment-hsn input { min-width: 6rem; padding: .5rem .35rem; font-size: .8rem; }
-.amendment-comparison { min-width: 530px; }
+/* GST return corrections. Layout, forms, tables and messages come from ledgercraft.css; only module-specific rules live here. */
+
+/* Month chosen as financial year plus month (WKWebView has no month picker). */
+.amendment-month { display: grid; gap: 5px; align-content: start; min-width: 0; font-size: 14px; color: var(--ink-2); }
+.amendment-month > div { display: flex; gap: 8px; }
+.amendment-month select { flex: 1 1 0; min-width: 0; color: var(--ink); }
+.toolbar > .amendment-month { flex: 1 1 18rem; }
+
+.amendment-choose > .amendment-pages { flex-basis: 100%; }
+.amendment-choose > .amendment-pages:empty { display: none; }
+.amendment-pager { margin-top: 0; }
+.amendment-history > .amendment-pager { margin-top: 14px; }
+
+.amendment-identity { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 22px; margin: 8px 0 4px; padding: 12px 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--rule-2); font-size: 14px; }
+
+/* Review form. */
+.amendment-form fieldset > h3 { margin: 8px 0 0; }
+.amendment-form fieldset > .actions, .amendment-form .details-list .actions { margin-top: 0; }
+.amendment-form .form-grid > .check:not(.wide) { align-self: center; }
+.amendment-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.amendment-hsn-details details > :not(summary) { margin-top: 10px; }
+.amendment-form [data-amendment-comparison] h3 { margin: 4px 0 0; }
+
+/* Editable rate and HSN lines: dense cells so the wide tables stay usable inside .table-scroll. */
+.amendment-num { text-align: right; }
+.amendment-rates td, .amendment-hsn td { padding: 4px 6px; }
+.amendment-rates input, .amendment-hsn input { min-width: 7rem; min-height: var(--control); padding: 5px 8px; }
+.amendment-rates input[data-rate-field="gstRateBps"], .amendment-hsn input[data-hsn-field="gstRateBps"], .amendment-hsn input[data-hsn-field="uqc"] { min-width: 5.5rem; }
+.amendment-hsn input[data-hsn-field="description"] { min-width: 12rem; }
+.amendment-rates td:last-child, .amendment-hsn td:last-child { width: 1%; }
+.amendment-rates button, .amendment-hsn button { min-height: var(--control); padding: 4px 10px; font-size: 13px; }
+
 .amendment-comparison td:last-child { font-weight: 600; }
-.amendment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem 1rem; }
-.amendment-source-state { display: flex; flex-wrap: wrap; gap: .3rem .7rem; align-items: baseline; margin: .6rem 0; font-size: .81rem; }
-.amendment-source-state strong { font-weight: 600; }
-.amendment-source-state code { font-size: .69rem; overflow-wrap: anywhere; }
-.amendment-preview { padding: 1rem 1.2rem; background: var(--inset); border-top: 2px solid var(--vermilion); }
+
+.amendment-source-state { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 2px 0 6px; font-size: 14px; }
+.amendment-source-state .code { font-size: 12px; overflow-wrap: anywhere; }
+.amendment-source-state + .form-note { margin: 0 0 8px; }
+
+.amendment-preview { padding-top: 14px; border-top: 1px solid var(--ink); }
 .amendment-preview:empty { display: none; }
-.amendment-history details { padding: .8rem 0; border-bottom: 1px solid var(--line-strong); }
-.amendment-history summary, .amendment-form summary { cursor: pointer; min-height: 44px; padding: .5rem 0; }
-.amendment-history summary small { display: block; margin-top: .25rem; color: var(--ink-soft); font-size: .76rem; }
-.amendment-history dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .4rem 1rem; font-size: .82rem; }
-.amendment-history dd { margin: 0; overflow-wrap: anywhere; }
-.amendment-source-reference { overflow-wrap: anywhere; }
-.amendment-source-reference small { display: block; margin-top: .25rem; font-size: .7rem; }
+.amendment-preview h3 { margin: 0 0 4px; }
+
+/* Saved history. */
+.amendment-record-title { display: grid; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.amendment-history details h3 { margin: 18px 0 0; }
+.amendment-source-reference .code { display: block; margin-top: 2px; font-size: 12px; overflow-wrap: anywhere; }
+.amendment-record-links { margin-top: 12px; }
+.details-list .amendment-disposition { margin-top: 14px; padding: 8px 0 0; border-top: 1px solid var(--rule); border-bottom: 0; }
+
 @media (max-width: 760px) {
-  .amendment-form, .amendment-grid { grid-template-columns: 1fr; }
-  .amendment-wide { grid-column: 1; }
-  .amendment-form fieldset { padding: .75rem; }
-  .amendment-period label, .amendment-choose label { min-width: min(100%, 12rem); }
-  .amendment-history dl { grid-template-columns: 1fr; gap: .2rem; }
-  .amendment-history dd { margin-bottom: .5rem; }
+  .toolbar > .amendment-month { flex-basis: 100%; }
 }
+
 @media print {
-  .amendment-period, .amendment-choose, .amendment-actions, #amendment-source-file, .amendment-form { display: none; }
-  .amendment-scroll { overflow: visible; }
-  .amendment-history details { break-inside: avoid; }
+  .amendment-back, .amendment-choose, .amendment-pager, .amendment-review-section, .amendment-transient, [data-amendment-disposition], [data-use-manual-evidence], .amendment-sources, .amendment-workspace > .status { display: none !important; }
+  .amendment-identity, .amendment-history details { break-inside: avoid; }
+  .amendment-history details h3 { break-after: avoid; }
 }

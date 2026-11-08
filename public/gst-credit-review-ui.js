@@ -14,10 +14,10 @@ const grounds = {
 
 export function creditReviewMarkup(rows, esc) {
   if (!rows.length) return "";
-  return `<section data-section34><h2>Outward credit note review</h2>
-    <label>Credit note<select id="section34-note">${rows.map(row =>
-      `<option value="${esc(row.id)}">${esc(row.number)} · ${esc(row.party)} · ${row.eligible ? "Included" : "Held"}</option>`).join("")}</select></label>
-    <div data-section34-detail></div></section>`;
+  return `<div class="subsection" data-section34><h2>Outward credit note review</h2><p>A credit note that reduces tax is included in the return workings only while Section 34(2) allows it. Record the evidence for each note here.</p>
+    <div class="toolbar"><label class="grow">Credit note<select id="section34-note">${rows.map(row =>
+      `<option value="${esc(row.id)}">${esc(row.number)} for ${esc(row.party)} (${row.eligible ? "included" : "held"})</option>`).join("")}</select></label></div>
+    <div data-section34-detail></div></div>`;
 }
 
 export function bindCreditReview(root, rows, { esc, save, refresh, revision }) {
@@ -30,22 +30,22 @@ export function bindCreditReview(root, rows, { esc, save, refresh, revision }) {
   }
   function open() {
     const row = rows.find(entry => entry.id === select.value), prior = row.review;
-    detail.innerHTML = `<p data-section34-status>${row.eligible ? "Included in return workings" : "Held from return workings"} · ${esc(row.reason)}</p>
-      <p>Original invoice ${esc(row.originalNumber || "unresolved")}${row.deadline ? " · Deadline " + esc(row.deadline.split("-").reverse().join("-")) : ""}</p>
-      <form data-section34-review>
+    detail.innerHTML = `<p data-section34-status><span class="pill ${row.eligible ? "ok" : "bad"}">${row.eligible ? "Included in return workings" : "Held from return workings"}</span> ${esc(row.reason)}</p>
+      <dl class="kv"><dt>Original invoice</dt><dd><span class="code">${esc(row.originalNumber || "unresolved")}</span></dd>${row.deadline ? `<dt>Deadline</dt><dd>${esc(row.deadline.split("-").reverse().join("-"))}</dd>` : ""}</dl>
+      <form data-section34-review class="form-grid">
       <label>Intended declaration date<input name="declarationDate" type="date" required min="${esc(row.date)}" value="${esc(prior?.declarationDate || "")}"></label>
       <label>Annual return for the original supply year<select name="annualReturnStatus" required>${options({"not-filed":"Not yet filed","filed":"Filed"},prior?.annualReturnStatus)}</select></label>
       <label data-annual-date>Annual return filing date<input name="annualReturnDate" type="date" value="${esc(prior?.annualReturnDate || "")}"></label>
       <label>Reason for the credit note<select name="adjustmentGround" required>${options(grounds,prior?.adjustmentGround)}</select></label>
-      <label><input type="checkbox" name="groundConfirmed"${prior?.groundConfirmed ? " checked" : ""}> The supporting document confirms this reason</label>
-      <div data-discount>
-        <label><input type="checkbox" name="discountAgreementConfirmed"${prior?.discountAgreementConfirmed ? " checked" : ""}> The discount was agreed at or before the supply</label>
-        <label><input type="checkbox" name="discountInvoiceLinked"${prior?.discountInvoiceLinked ? " checked" : ""}> The discount is linked to the relevant invoice</label>
+      <label class="check wide"><input type="checkbox" name="groundConfirmed"${prior?.groundConfirmed ? " checked" : ""}><span>The supporting document confirms this reason</span></label>
+      <div class="check-group wide" data-discount>
+        <label class="check"><input type="checkbox" name="discountAgreementConfirmed"${prior?.discountAgreementConfirmed ? " checked" : ""}><span>The discount was agreed at or before the supply</span></label>
+        <label class="check"><input type="checkbox" name="discountInvoiceLinked"${prior?.discountInvoiceLinked ? " checked" : ""}><span>The discount is linked to the relevant invoice</span></label>
       </div>
       <label>Recipient evidence<select name="recipientBasis" required></select></label>
-      <label>Supporting document or review reference<input name="reference" maxlength="500" required value="${esc(prior?.reference || "")}"></label>
-      ${prior ? '<label>Reason for changing the review<input name="correctionReason" required maxlength="500"></label>' : ""}
-      <button type="submit">${prior ? "Update credit review" : "Save credit review"}</button><p data-review-error role="status"></p></form>`;
+      <label class="wide">Supporting document or review reference<input name="reference" maxlength="500" required value="${esc(prior?.reference || "")}"></label>
+      ${prior ? '<label class="wide">Reason for changing the review<input name="correctionReason" required maxlength="500"></label>' : ""}
+      <div class="actions wide"><button type="submit">${prior ? "Update credit review" : "Save credit review"}</button></div><p class="form-message alert wide" data-review-error role="alert"></p></form>`;
     const form = detail.querySelector("form");
     function updateBasis(selected) {
       const modern = form.elements.declarationDate.value >= "2025-10-01";
@@ -82,7 +82,7 @@ export function bindCreditReview(root, rows, { esc, save, refresh, revision }) {
       const button = form.querySelector("button");
       button.disabled = select.disabled = true;
       try { await save({ ...body, requestId }); await refresh(row.id); }
-      catch (error) { form.querySelector("[data-review-error]").textContent = error.message; }
+      catch (error) { const message = form.querySelector("[data-review-error]"); message.textContent = error.message; message.scrollIntoView({ block: "nearest" }); }
       finally { button.disabled = select.disabled = false; }
     };
   }

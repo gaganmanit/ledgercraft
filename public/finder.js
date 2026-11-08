@@ -2,7 +2,7 @@ export function installFinder({ api, esc, parseRoute, routes }) {
   const dialog = document.createElement("dialog");
   dialog.className = "finder";
   dialog.setAttribute("aria-label", "Find in Ledgercraft");
-  dialog.innerHTML = '<div class="finder-head"><label for="find-query">Find in Ledgercraft</label><button type="button" class="ghost" aria-label="Close search">Esc</button></div><input id="find-query" type="search" placeholder="Ledger, narration, voucher number or page" autocomplete="off"><div class="find-list" aria-live="polite"></div>';
+  dialog.innerHTML = '<div class="finder-head"><label for="find-query">Find a ledger, voucher, narration or page</label><button type="button" class="ghost" aria-label="Close search">Esc</button></div><input id="find-query" type="search" role="combobox" aria-expanded="true" aria-controls="find-list" aria-autocomplete="list" placeholder="Type to search this book" autocomplete="off"><div class="find-list" id="find-list" role="listbox" aria-label="Results"></div>';
   document.body.append(dialog);
   const field = dialog.querySelector("input");
   const list = dialog.querySelector(".find-list");
@@ -13,7 +13,7 @@ export function installFinder({ api, esc, parseRoute, routes }) {
     const needle = field.value.trim();
     const choices = routes(id).filter(x => x.title.toLowerCase().includes(needle.toLowerCase()));
     function paint(items) {
-      list.innerHTML = items.map(x => `<a href="${esc(x.href)}"><span><strong>${esc(x.title)}</strong><small>${esc(x.detail || x.kind || "")}</small></span><span aria-hidden="true">↗</span></a>`).join("") || '<p class="quiet">No matches in this book.</p>';
+      list.innerHTML = items.map((x, i) => `<a role="option" id="find-option-${i}" href="${esc(x.href)}"><span><strong>${esc(x.title)}</strong><small>${esc(x.detail || x.kind || "")}</small></span></a>`).join("") || '<p class="quiet" role="option" aria-disabled="true">Nothing in this book matches. Try a ledger name, a voucher number or a word from a narration.</p>';
     }
     paint(choices.slice(0, 12));
     if (id && needle) {
