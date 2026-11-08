@@ -9,7 +9,8 @@ Every workstation has a session token, stored as `session-token` (mode 0600) in 
 ## What this does and does not protect
 
 - The token stops other programs and other user accounts on the same computer from reading or changing the books through the loopback port unless they can read the token file or the browser's cookie store, which belong to the same user. It does not replace the operating system's user account or disk encryption. Keep the data directory inside the user's home folder with the default permissions, and use FileVault or an equivalent.
-- Backups are unencrypted JSON. Treat them like the books themselves.
+- Backups are unencrypted JSON and include the edit log. Treat them like the books themselves.
+- The edit log (`audit.jsonl` in each company folder) is append-only and hash-chained. Ledgercraft never rewrites it; a restore that carries a broken chain is refused. Anyone with write access to the data folder can still delete the file, so keep backups elsewhere too.
 - Reference resources (the GSTN HSN/SAC directory and the GSTR-1 workbook template) are downloaded only when you run `npm run setup`, are verified against pinned SHA-256 digests, and are never fetched at runtime.
 - The Windows Tally bridge script talks to a Tally instance on the local network over the port Tally exposes. Run it only on a machine you trust, against a Tally you own.
 

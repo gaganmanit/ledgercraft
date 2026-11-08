@@ -55,13 +55,21 @@ Open a saved voucher from the day book to alter, duplicate or print it. Changes 
 
 Income and expense ledgers start each financial year at nil. Earlier years' profit appears as one brought-forward row under Capital, and the balance sheet shows retained profit separately from the current year's. Every save is written durably and keeps a backup copy beside the book; a damaged file opens from that copy with a warning.
 
+## Records, locks and numbering
+
+Every change to the books is written to an edit log beside the company's files: who-did-what is recorded as what changed, when, the copy before and after, the request that made it and the reason where one was given. The log is append-only and hash-chained, so a line that is altered or removed shows up as a broken chain. It travels with backups and a restore adds to it rather than replacing it. Open **Edit log** under Books to filter it by period, kind and words. This meets the audit-trail requirement in Rule 3(1) of the Companies (Accounts) Rules 2014.
+
+**Settings** under Books holds the numbering series for each voucher type (prefix, suffix with a `{fy}` token that becomes `26-27`, zero padding and whether numbers restart every financial year) and the period locks. A books lock refuses any voucher, opening balance or stock journal dated on or before the lock date; a GST lock refuses GST documents and return decisions dated on or before it. Both need a reason and are written to the edit log. An opening balance on a ledger that vouchers already use can be corrected by giving a reason.
+
+**Party statements** under Books lists every debtor and creditor with its balance, overdue amount and ageing in current, 1 to 30, 31 to 60, 61 to 90, 91 to 180 and over 180 days, worked out from bill due dates or from the voucher date plus the party's credit days. Open a party for a dated statement with running balance, due dates and open items, printable or downloadable as CSV. Suppliers marked as registered MSMEs show amounts unpaid beyond 45 days of the bill date (Section 43B(h) of the Income-tax Act).
+
 ## GST billing and review
 
 Start in **GST setup**. Save the business registration, customer or supplier, and goods or service masters. The local HSN/SAC directory supports code and description search. An item carries its classification, unit and explicit tax rate.
 
 **New invoice** creates itemised sales, purchases and supported linked notes. Registration, place of supply, tax treatment and dated document particulars determine the posting. The invoice register opens the stored document, its print view and associated accounting entry.
 
-**GST returns** provides GSTR-1 and GSTR-3B working figures, HSN summaries and GSTN-format CSV/XLSX exports. Import a GSTR-2B file to compare supplier documents with the purchase register. Saved statement originals and reviewed matches stay linked to their source.
+**GST returns** provides GSTR-1 and GSTR-3B working figures, HSN summaries, the GSTR-1 Excel workbook and the GSTR-1 JSON file for the GST portal's offline tool or the Returns dashboard upload, with a readiness check that lists warnings before you download. A sales credit note that would reduce tax after the Section 34(2) time limit is refused with the date and a pointer to a financial credit note. Purchases record the supplier's own invoice date, which drives the Section 16(4) deadline and GSTR-2B matching. Import a GSTR-2B file to compare supplier documents with the purchase register. Saved statement originals and reviewed matches stay linked to their source.
 
 **Purchase ITC review** records dated claims, reversals, reclaims and permanent cost decisions against a purchase and its evidence. **Reverse charge** separates liability, cash discharge and credit decisions. **Return corrections** preserves the posted transaction while recording supported corrections to previously reported particulars, including their original filing reference and evidence.
 
