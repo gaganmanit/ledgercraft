@@ -342,7 +342,7 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
           }
           if (req.method === "DELETE") {
             const method = parts[3] === "groups" ? "removeGroup" : "removeLedger";
-            send(res, 200, await store[method](id, masterId));
+            send(res, 200, await store[method](id, masterId, (await readBody(req)).expected));
             return;
           }
         }
@@ -369,7 +369,7 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
           return;
         }
         if (parts[3] === "vouchers" && parts[4] && req.method === "DELETE") {
-          send(res, 200, await store.removeVoucher(id, decodeURIComponent(parts[4])));
+          send(res, 200, await store.removeVoucher(id, decodeURIComponent(parts[4]), (await readBody(req)).expected));
           return;
         }
         if (parts[3] === "reports" && req.method === "GET") {

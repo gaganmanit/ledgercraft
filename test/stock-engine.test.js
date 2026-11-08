@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assertStockBook, stockOpening, stockPeriod, stockState } from '../lib/stock-engine.js';
+import { profitAndLoss } from '../lib/engine.js';
+import { reservedGroups } from '../lib/groups.js';
 
 function books(method = 'fifo', openingQuantity = '0', openingValuePaise = 0) {
   return { id: 'synthetic-stock', booksFrom: '2026-04-01', gst: { items: [
@@ -56,15 +58,25 @@ test('unpriced openings and pending-tax purchases expose incomplete values rathe
   assert.equal(state(books(), [gst('blocked', '2026-04-02', 'purchase', '1', 1000, { taxPaise: 180, itcEligibility: 'ineligible' })]).totals.valuePaise, 1180);
 });
 
-test('dated negative stock remains a cost gap even when a later receipt fills the quantity shortage', () => {
+test('dated negative stock is a gap until a later priced receipt fills it, then becomes an informational note', () => {
   const company = books();
   const vouchers = [gst('sale', '2026-04-02', 'sales', '2', 9000), gst('buy', '2026-04-03', 'purchase', '3', 600)];
   const before = item(state(company, vouchers, '2026-04-02'));
   assert.equal(before.quantity, '-2'); assert.equal(before.valuePaise, null);
+  assert.equal(before.issues[0].code, 'negative-stock');
+  // Previously the shortage stayed an issue for ever and blanked the value; the
+  // receipt's known cost now prices the shortage, as Tally does.
   const after = item(state(company, vouchers));
   assert.equal(after.quantity, '1'); assert.equal(after.knownValuePaise, 200);
-  assert.equal(after.valuePaise, null);
-  assert.equal(after.issues[0].code, 'negative-stock');
+  assert.equal(after.valuePaise, 200);
+  assert.equal(after.complete, true);
+  assert.deepEqual(after.issues, []);
+  assert.equal(after.notes[0].code, 'negative-stock-resolved');
+  assert.equal(after.notes[0].sourceId, 'sale');
+  assert.equal(after.notes[0].resolvedBy, 'buy');
+  const sale = after.movements.find(row => row.sourceId === 'sale');
+  assert.equal(sale.valuePaise, -400);
+  assert.equal(stockPeriod(company, vouchers, { to: '2026-04-30' }).financial.costOfGoodsSoldPaise, 400);
 });
 
 test('six-decimal quantities and paise remainder conservation survive repeated partial FIFO issues', () => {
@@ -235,7 +247,9 @@ test('invalid journals, duplicate identities, valuation methods, unsafe paise an
   assert.throws(() => state(company, [gst('bad', '2026-04-02', 'purchase', '0.0000001', 100)]), /six decimal/);
   assert.throws(() => state(company, [gst('same', '2026-04-02', 'purchase', '1', 100), gst('same', '2026-04-03', 'purchase', '1', 100)]), /Duplicate stock source/);
   journal(company, { id: 'bad-transfer', number: 'T', date: '2026-04-02', type: 'transfer', lines: [{ itemId: 'goods', quantity: '1', fromGodownId: 'main', toGodownId: 'annex' }] });
-  assert.throws(() => assertStockBook(company, []), /transfer exceeds/);
+  // A short transfer used to throw and abort every replay; it is now a dated stock gap.
+  assert.equal(assertStockBook(company, []), true);
+  assert.match(state(company, []).issues[0].message, /Transfer T moves more than/);
   delete company.stock.journals[0].lines[0].fromGodownId;
   assert.throws(() => assertStockBook(company, []), /source godown/);
 });
@@ -289,4 +303,76 @@ test('book opening reads valued master allocations and source gaps without repla
   assert.equal(JSON.stringify(company), original);
   company.stock.tally = { hasSourceGaps: true, sourceGaps: [{ code: 'source-godown', message: 'A source godown was omitted.' }] };
   assert.equal(stockOpening(company).totals.complete, false);
+});
+
+test('a sale saved before its same-day purchase is valued after that purchase, keeping closing stock, COGS and gross profit', () => {
+  const company = { ...books(), name: 'Synthetic same-day trader', groups: reservedGroups(), ledgers: [
+    { id: 'cash', name: 'Cash', groupId: 'g-cash', opening: { dc: 'Dr', paise: 0 } },
+    { id: 'sales', name: 'Sales', groupId: 'g-sales', opening: { dc: 'Cr', paise: 0 } },
+    { id: 'purchases', name: 'Purchases', groupId: 'g-purchase', opening: { dc: 'Dr', paise: 0 } },
+  ] };
+  company.stock.integrateAccounts = true;
+  const posted = (voucher, dr, cr, paise) => ({ ...voucher, type: voucher.gst.type, narration: '', lines: [{ ledgerId: dr, dc: 'Dr', paise }, { ledgerId: cr, dc: 'Cr', paise }] });
+  // The sale was keyed first (sequence 1); the stock arrived the same morning (sequence 2).
+  const vouchers = [
+    posted(gst('sale', '2026-04-05', 'sales', '5', 7500, { metadata: { sequence: 1, lines: [] } }), 'cash', 'sales', 7500),
+    posted(gst('buy', '2026-04-05', 'purchase', '10', 10000, { metadata: { sequence: 2, lines: [] } }), 'purchases', 'cash', 10000),
+  ];
+  const closing = state(company, vouchers, '2027-03-31');
+  assert.equal(item(closing).quantity, '5');
+  assert.equal(closing.totals.complete, true);
+  assert.equal(closing.totals.valuePaise, 5000);
+  assert.deepEqual(closing.issues, []);
+  const year = stockPeriod(company, vouchers, { from: '2026-04-01', to: '2027-03-31' });
+  assert.equal(year.financial.complete, true);
+  assert.equal(year.financial.closingValuePaise, 5000);
+  assert.equal(year.financial.costOfGoodsSoldPaise, 5000);
+  const pl = profitAndLoss(company, vouchers, '2026-04-01', '2027-03-31');
+  assert.equal(pl.grossProfit, 2500, 'sales 75 less cost of goods sold 50');
+  // Explicit Tally-style stock journals keyed in the same wrong order behave the same way.
+  const native = books();
+  journal(native, { id: 'j-sale', number: 'S1', date: '2026-04-05', sequence: 1, type: 'issue', financialKind: 'sale', lines: [{ itemId: 'goods', quantity: '5' }] });
+  journal(native, { id: 'j-buy', number: 'P1', date: '2026-04-05', sequence: 2, type: 'receipt', financialKind: 'purchase', lines: [{ itemId: 'goods', quantity: '10', valuePaise: 100000 }] });
+  const nativePeriod = stockPeriod(native, [], { from: '2026-04-01', to: '2027-03-31' });
+  assert.equal(nativePeriod.financial.closingValuePaise, 50000);
+  assert.equal(nativePeriod.financial.costOfGoodsSoldPaise, 50000);
+});
+
+test('same-day ordering keeps returns, transfers and counts in their keyed sequence', () => {
+  const company = books('fifo', '1', 100);
+  // A same-day return of a same-day sale must still find that sale.
+  const vouchers = [gst('sale', '2026-04-02', 'sales', '1', 900, { metadata: { sequence: 1, lines: [] } }),
+    gst('return', '2026-04-02', 'sales', '1', 900, { type: 'Credit Note', originalInvoiceId: 'sale', metadata: { sequence: 2, lines: [] } })];
+  const result = item(state(company, vouchers));
+  assert.equal(result.quantity, '1'); assert.equal(result.valuePaise, 100);
+  assert.deepEqual(result.issues, []);
+});
+
+test('an unpriced receipt fills the quantity but keeps the shortage as a cost issue', () => {
+  const company = books();
+  journal(company, { id: 'j-sale', number: 'S1', date: '2026-04-02', type: 'issue', financialKind: 'sale', lines: [{ itemId: 'goods', quantity: '2' }] });
+  journal(company, { id: 'j-buy', number: 'P1', date: '2026-04-03', type: 'receipt', financialKind: 'purchase', lines: [{ itemId: 'goods', quantity: '3' }] });
+  const result = item(state(company, []));
+  assert.equal(result.quantity, '1');
+  assert.equal(result.valuePaise, null);
+  assert.ok(result.issues.some(row => row.code === 'negative-stock'));
+  assert.deepEqual(result.notes, []);
+});
+
+test('a backdated sale before a godown transfer reports a transfer shortage instead of aborting the replay', () => {
+  const company = books();
+  journal(company, { id: 'j0', number: 'R0', date: '2026-04-01', sequence: 1, type: 'receipt', financialKind: 'purchase', lines: [{ itemId: 'goods', quantity: '10', valuePaise: 100000 }] });
+  journal(company, { id: 'jt', number: 'ST-9', date: '2026-04-10', sequence: 2, type: 'transfer', lines: [{ itemId: 'goods', quantity: '8', fromGodownId: 'main', toGodownId: 'annex' }] });
+  journal(company, { id: 'jb', number: 'S-B', date: '2026-04-05', sequence: 3, type: 'issue', financialKind: 'sale', lines: [{ itemId: 'goods', quantity: '5' }] });
+  assert.equal(assertStockBook(company, []), true);
+  const result = state(company, []);
+  assert.equal(item(result).quantity, '5');
+  assert.deepEqual(item(result).godowns.map(row => row.quantity), ['-3', '8']);
+  const shortage = result.issues.find(row => row.code === 'negative-stock');
+  assert.equal(shortage.sourceId, 'jt');
+  assert.equal(shortage.godownId, 'main');
+  assert.match(shortage.message, /Transfer ST-9/);
+  assert.equal(result.totals.complete, false);
+  assert.equal(item(result).godowns.find(row => row.godownId === 'annex').valuePaise, null, 'the unpriced shortfall travels with the transfer');
+  assert.ok(stockPeriod(company, [], { to: '2026-04-30' }));
 });

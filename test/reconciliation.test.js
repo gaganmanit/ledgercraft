@@ -200,3 +200,43 @@ test("GST invoices gain bill references and due-date edits survive a company rou
     assert.deepEqual(book.vouchers.find(row => row.id === invoice.id).gst, invoice);
   } finally { await f.close(); }
 });
+
+test("bank validation scales linearly: thousands of vouchers and matches validate well under a second", async () => {
+  const { reservedGroups } = await import("../lib/groups.js");
+  const { bookEntries } = await import("../lib/reconciliation-common.js");
+  const company = { id: "scale", name: "Synthetic scale books", booksFrom: "2026-04-01", groups: reservedGroups(), ledgers: [
+    { id: "l-bank", name: "Synthetic Bank", groupId: "g-bank", opening: { dc: "Dr", paise: 0 } },
+    { id: "l-sales", name: "Sales", groupId: "g-sales", opening: { dc: "Cr", paise: 0 } }] };
+  const voucherCount = 4000, matchCount = 2500;
+  const vouchers = [];
+  let csv = "Date,Narration,Deposit\n";
+  for (let i = 0; i < voucherCount; i++) {
+    const day = new Date(Date.UTC(2026, 3, 1) + (i % 360) * 86400000).toISOString().slice(0, 10);
+    vouchers.push({ id: `v-${i}`, type: "Receipt", number: `R${i}`, date: day, narration: "", lines: [{ ledgerId: "l-bank", dc: "Dr", paise: 10000 + i }, { ledgerId: "l-sales", dc: "Cr", paise: 10000 + i }] });
+    if (i < matchCount) { const [y, m, d] = day.split("-"); csv += `${d}/${m}/${y},Synthetic ${i},${((10000 + i) / 100).toFixed(2)}\n`; }
+  }
+  const imported = mutateReconciliation(null, { company, vouchers }, "import-statement", { requestId: "scale-import-0000001", revision: 0, ledgerId: "l-bank", from: "2026-04-01", to: "2027-03-31",
+    openingPaise: 0, closingPaise: 0, csv, mapping: { date: 0, narration: 1, amount: 2 }, signedConvention: "credit-positive", dateFormat: "dd/mm/yyyy" });
+  const meta = imported.section, statement = meta.statements[0];
+  const fingerprints = new Map(bookEntries(company, vouchers, "l-bank").map(entry => [entry.voucherId, entry.fingerprint]));
+  for (let i = 0; i < matchCount - 1; i++) meta.matches.push({ id: `bm-${i.toString(16).padStart(20, "0")}`, ledgerId: "l-bank", statementId: statement.id, rowIds: [statement.rows[i].id], voucherIds: [`v-${i}`], fingerprints: { [`v-${i}`]: fingerprints.get(`v-${i}`) }, matchedAt: "2026-11-08T00:00:00.000Z" });
+  let started = performance.now();
+  assertReconciliation({ ...company, reconciliation: meta }, vouchers);
+  const validationMs = performance.now() - started;
+  assert.ok(validationMs < 1000, `validation took ${Math.round(validationMs)} ms`);
+  // One more match through the ordinary mutation path, then the store-style re-check.
+  started = performance.now();
+  const last = matchCount - 1;
+  const matched = mutateReconciliation(meta, { company, vouchers }, "match-bank", { requestId: "scale-match-00000001", revision: meta.revision, statementId: statement.id, rowIds: [statement.rows[last].id], voucherIds: [`v-${last}`] });
+  assertReconciliation({ ...company, reconciliation: matched.section }, structuredClone(vouchers));
+  const mutationMs = performance.now() - started;
+  assert.equal(matched.section.matches.length, matchCount);
+  assert.ok(mutationMs < 1000, `match plus store re-check took ${Math.round(mutationMs)} ms`);
+  // Validation stays strict at scale.
+  const tampered = structuredClone(matched.section);
+  tampered.matches[17].fingerprints["v-17"] = "0".repeat(64);
+  assert.throws(() => assertReconciliation({ ...company, reconciliation: tampered }, vouchers), /no longer agrees/);
+  const doubled = structuredClone(matched.section);
+  doubled.matches[18].rowIds = [...doubled.matches[17].rowIds];
+  assert.throws(() => assertReconciliation({ ...company, reconciliation: doubled }, vouchers), /Match equal totals|matched twice/);
+});

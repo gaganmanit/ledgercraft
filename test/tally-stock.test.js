@@ -244,3 +244,66 @@ test("Ledgercraft restores historical Financer stock evidence and rejects altere
     assert.throws(() => restoreTallyArchive(archive), /baseline/);
   }
 });
+
+test("TallyPrime negative stock opening values import as normal debit stock and export with Tally's sign", async () => {
+  const prime = file("TallyPrimeStockMasters.xml", await readFile(new URL("fixtures/tally/TallyPrimeStockMasters.xml", import.meta.url)));
+  const vouchers = (await files())[1];
+  const preview = previewTally([prime, vouchers], { ...options, companyName: "Synthetic Prime Traders" });
+  assert.equal(preview.canCommit, true, JSON.stringify(preview.issues));
+  assert.equal(preview.summary.stockProjection.items, 1);
+  assert.equal(preview.summary.stockProjection.exceptions, 0, JSON.stringify(preview.issues.filter(issue => issue.code === "tally-stock-source-exception")));
+  assert.equal(preview.company.stock.tally.hasSourceGaps, false);
+  assert.ok(!preview.issues.some(issue => issue.code === "tally-stock-opening-value-sign"), "Tally's normal negative sign needs no review");
+  const settings = preview.company.stock.items[preview.company.stock.masters[0].id];
+  assert.equal(settings.openingValuePaise, 100000);
+  assert.deepEqual(settings.openingAllocations.map(row => row.valuePaise), [60000, 40000]);
+  const report = reportOf(preview);
+  assert.equal(report.items[0].quantity, "11");
+  assert.equal(report.items[0].valuePaise, 95000);
+  assert.equal(report.totals.complete, true);
+
+  const masters = exportTallyMasters(preview.company);
+  assert.match(masters, /<OPENINGBALANCE>10 nos<\/OPENINGBALANCE><OPENINGVALUE>-1000\.00<\/OPENINGVALUE>/);
+  assert.match(masters, /<OPENINGVALUE>-600\.00<\/OPENINGVALUE>/);
+  assert.match(masters, /<OPENINGVALUE>-400\.00<\/OPENINGVALUE>/);
+  assert.doesNotMatch(masters, /<OPENINGVALUE>\d/, "No stock opening value is exported with the credit sign");
+  const daybook = exportTallyDayBook(preview.company, preview.vouchers, "2026-04-01", "2026-04-30");
+  const again = previewTally([file("masters.xml", masters), file("daybook.xml", daybook)], options);
+  assert.equal(again.canCommit, true, JSON.stringify(again.issues));
+  assert.ok(!again.issues.some(issue => issue.code === "tally-stock-opening-value-sign"));
+  assert.equal(reportOf(again).items[0].valuePaise, 95000);
+});
+
+test("a positive stock opening value keeps its magnitude but is flagged for review", async () => {
+  const preview = previewTally(await files(), options);
+  assert.equal(preview.canCommit, true);
+  assert.equal(preview.summary.stockProjection.exceptions, 0);
+  const flagged = preview.issues.filter(issue => issue.code === "tally-stock-opening-value-sign");
+  assert.equal(flagged.length, 1);
+  assert.equal(flagged[0].severity, "review");
+  assert.match(flagged[0].message, /Synthetic Widget/);
+  assert.equal(reportOf(preview).items[0].valuePaise, 95000);
+  assert.deepEqual(restoreTallyArchive(archiveOf(preview)).company.stock, preview.company.stock);
+});
+
+test("archives made before the negative-sign rule still restore with their recorded stock gaps", async () => {
+  const prime = file("TallyPrimeStockMasters.xml", await readFile(new URL("fixtures/tally/TallyPrimeStockMasters.xml", import.meta.url)));
+  const source = [prime, (await files())[1]];
+  const legacy = previewTally(source, { ...options, legacyStockOpeningSign: true });
+  assert.equal(legacy.canCommit, true, JSON.stringify(legacy.issues));
+  assert.ok(legacy.company.stock.tally.sourceGaps.some(gap => /Negative opening stock values require source review/.test(gap.message)));
+  assert.deepEqual(restoreTallyArchive(archiveOf(legacy)).company.stock, legacy.company.stock);
+});
+
+test("Tally's \\u0004 Primary godown parent is a flat godown, while older archives keep their recorded hierarchy gap", async () => {
+  const source = edit(await files(), "StockMasters.xml", xml => xml.replace("<PARENT>Primary</PARENT>", "<PARENT>&#4; Primary</PARENT>"));
+  const preview = previewTally(source, options);
+  assert.equal(preview.canCommit, true, JSON.stringify(preview.issues));
+  assert.ok(!preview.issues.some(issue => issue.code === "tally-stock-godown-hierarchy"));
+  assert.equal(preview.company.stock.tally.hasSourceGaps, false);
+  assert.match(exportTallyMasters(preview.company), /<GODOWN NAME="Workshop"/);
+  const legacy = previewTally(source, { ...options, legacyStockGodownParent: true });
+  assert.ok(legacy.company.stock.tally.sourceGaps.some(gap => gap.code === "tally-stock-godown-hierarchy"));
+  assert.deepEqual(restoreTallyArchive(archiveOf(legacy)).company.stock, legacy.company.stock);
+  assert.deepEqual(restoreTallyArchive(archiveOf(preview)).company.stock, preview.company.stock);
+});

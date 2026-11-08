@@ -13,6 +13,28 @@ All notable changes to Ledgercraft are recorded here. Dates are dd-mm-yyyy.
 - The finder is a proper combobox with listbox results.
 - Companies page without numbering; the ledger report and day book show dd-mm-yyyy dates everywhere.
 
+### Books
+- Income and expense ledgers start every financial year at nil in the trial balance, ledger report and group summary. Earlier years' profit appears as one brought-forward row under Capital, and the balance sheet shows retained profit separately from the current year's profit.
+- A profit and loss statement that starts at the books beginning includes the opening balances of income and expense ledgers, so a mid-year migration reconciles with the balance sheet.
+- The group summary rolls subgroups into their parents; drilling into a group lists its subgroups with totals above its own ledgers.
+- Every save is fsynced and keeps a rolling `.bak` beside `company.json` and `vouchers.json`. A book whose primary file is damaged opens from the backup and reports a warning.
+- Same-day vouchers sort naturally (RCT-9 before RCT-10). Deletes honour an out-of-date copy when the request carries one.
+
+### GST
+- A sales credit note that reduces tax and is dated after the Section 34(2) cutoff is refused. The message gives the cutoff date and points to a financial credit note without GST.
+- Purchases and purchase notes record the supplier's invoice date. The Section 16(4) deadline, GSTR-2B matching and the ITC screen follow it. The same supplier document booked on either side of 1 April is a duplicate.
+- SEZ supplies need the recipient's GSTIN and can never fall into B2CS or B2CL.
+- TDS, TCS, UIN, non-resident and OIDAR identifiers are accepted on parties with their roles; TDS and UIN holders are B2B customers.
+- Reverse-charge reversals marked time-barred stay in the 4(C) working. Rates outside the notified slabs are refused unless an item is marked as a special rate. Services report UQC NA. Invoices may carry a round-off of up to 50 paise to a Round Off ledger.
+
+### Stock, Tally and bank
+- Stock opening values follow Tally's sign convention on import and export, so real TallyPrime exports project into active stock.
+- Within a day, receipts are processed before issues. A shortage filled later by a priced receipt no longer blanks the year's closing stock, cost of goods sold and gross profit.
+- A godown transfer short of stock becomes an item issue instead of aborting the stock replay.
+- Bank statement import understands HDFC, SBI, ICICI and Axis layouts: preamble and footer lines, semicolon or tab separators, two-digit years, named months, timestamps and Rs./INR/₹ prefixes. Validation runs once per ledger and statement, so matching answers in milliseconds on a year of data. The reconciliation section may grow to 32 MiB.
+- The Windows bridge refuses a start date after the books beginning and also exports Company.xml; when TrialBalance.xml is supplied the importer reconciles every ledger's closing balance. Payroll and non-accounting voucher types and custom primary groups no longer block an import. Exported masters carry party GSTIN, state, address and PIN.
+- `npm run demo` (tools/seed-demo.mjs) builds the Saraswati Traders demonstration company through the public API.
+
 ### Server
 - A per-workstation session token gates the local API. The server prints a start link once; the Mac app opens it automatically. Other programs on the same computer can no longer read or change the books over loopback without it.
 - Static files are served from `public/` with path-traversal protection, correct MIME types, ETags and long-lived caching for fonts.

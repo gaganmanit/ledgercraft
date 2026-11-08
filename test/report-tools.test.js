@@ -21,13 +21,47 @@ test("group summary totals and drilldown use the same trial rows", () => {
   assert.equal(report.rows.length, company.groups.length);
   assert.equal(report.debit, trial.debit);
   assert.equal(report.credit, trial.credit);
-  assert.equal(report.rows.reduce((sum, row) => sum + row.debit, 0), trial.debit);
-  assert.equal(report.rows.reduce((sum, row) => sum + row.credit, 0), trial.credit);
+  // Rows roll up their descendants, so only the primary groups add up to the trial balance.
+  const primary = report.rows.filter((row) => !row.parentId);
+  assert.equal(primary.reduce((sum, row) => sum + row.debit, 0), trial.debit);
+  assert.equal(primary.reduce((sum, row) => sum + row.credit, 0), trial.credit);
   const cash = groupSummary(company, vouchers, FROM, TO, "g-cash");
   assert.equal(cash.ledgers.length, 1);
   assert.equal(cash.ledgers[0].name, "Cash");
   assert.match(report.rows.find((row) => row.groupId === "g-cash").path, /Current Assets \/ Cash-in-Hand/);
   assert.throws(() => groupSummary(company, vouchers, TO, FROM), /period/);
+});
+
+test("group summary rolls subgroups into their parents and drills down one level at a time", () => {
+  const { company, vouchers } = makeBook();
+  const report = groupSummary(company, vouchers, FROM, TO);
+  const byId = new Map(report.rows.map((row) => [row.groupId, row]));
+  const current = byId.get("g-current-assets");
+  const bank = byId.get("g-bank");
+  const cash = byId.get("g-cash");
+  assert.ok(bank.debit > 0 && cash.debit > 0);
+  assert.equal(current.debit, bank.debit + cash.debit);
+  assert.equal(current.periodDr, bank.periodDr + cash.periodDr);
+  assert.equal(current.periodCr, bank.periodCr + cash.periodCr);
+  assert.equal(current.parentId, null);
+  assert.equal(cash.parentId, "g-current-assets");
+  assert.equal(cash.depth, 1);
+  const drill = groupSummary(company, vouchers, FROM, TO, "g-current-assets");
+  assert.deepEqual(drill.ledgers, []);
+  assert.deepEqual(drill.childGroups.map((row) => row.name).sort(), ["Bank Accounts", "Cash-in-Hand"]);
+  assert.equal(drill.childGroups.find((row) => row.groupId === "g-bank").debit, bank.debit);
+  assert.equal(drill.debit, bank.debit + cash.debit);
+  assert.equal(drill.credit, 0);
+  // A custom subgroup with its own ledger rolls up two levels and appears beside the direct ledgers.
+  company.groups.push({ id: "g-petty", name: "Petty cash boxes", parentId: "g-cash", nature: null, gross: false, cashBank: false, reserved: false });
+  company.ledgers.push({ id: "l-petty", name: "Front desk box", groupId: "g-petty", opening: { dc: "Dr", paise: 4_321 } });
+  const nested = groupSummary(company, vouchers, FROM, TO, "g-cash");
+  assert.deepEqual(nested.ledgers.map((row) => row.name), ["Cash"]);
+  assert.deepEqual(nested.childGroups.map((row) => [row.name, row.debit]), [["Petty cash boxes", 4_321]]);
+  assert.equal(nested.debit, cash.debit + 4_321);
+  assert.equal(groupSummary(company, vouchers, FROM, TO, "g-current-assets").debit, bank.debit + cash.debit + 4_321);
+  // Empty child groups are not listed in the drilldown.
+  assert.equal(groupSummary(company, vouchers, FROM, TO, "g-current-liab").childGroups.some((row) => row.groupId === "g-provisions"), false);
 });
 
 test("cash/bank excludes credit purchase and outstanding includes that supplier", () => {

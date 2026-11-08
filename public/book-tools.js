@@ -123,13 +123,14 @@ export async function viewBookTool(route, token, ui) {
   if (!still(token)) return true;
   const toolbar = periodBar(range);
   if (route.name === "group-summary") {
+    const groupRow = (row) => `<tr><th scope="row"><a href="#/c/${esc(id)}/group-summary/${esc(row.groupId)}">${esc(row.name)}</a>${row.path && row.path !== row.name ? `<div class="quiet group-path">${esc(row.path)}</div>` : ""}</th>${amountCell(row.periodDr)}${amountCell(row.periodCr)}${amountCell(row.debit)}${amountCell(row.credit)}</tr>`;
     const rows = report.group
-      ? report.ledgers.map((row) => `<tr><th scope="row">${ledgerLink(row)}</th>${amountCell(row.periodDr)}${amountCell(row.periodCr)}${amountCell(row.closing.dc === "Dr" ? row.closing.paise : 0)}${amountCell(row.closing.dc === "Cr" ? row.closing.paise : 0)}</tr>`)
-      : report.rows.map((row) => `<tr><th scope="row"><a href="#/c/${esc(id)}/group-summary/${esc(row.groupId)}">${esc(row.name)}</a>${row.path && row.path !== row.name ? `<div class="quiet group-path">${esc(row.path)}</div>` : ""}</th>${amountCell(row.periodDr)}${amountCell(row.periodCr)}${amountCell(row.debit)}${amountCell(row.credit)}</tr>`);
+      ? (report.childGroups || []).map(groupRow).concat(report.ledgers.map((row) => `<tr><th scope="row">${ledgerLink(row)}</th>${amountCell(row.periodDr)}${amountCell(row.periodCr)}${amountCell(row.closing.dc === "Dr" ? row.closing.paise : 0)}${amountCell(row.closing.dc === "Cr" ? row.closing.paise : 0)}</tr>`))
+      : report.rows.map(groupRow);
     const empty = report.group
       ? "No ledger in this group has a balance in this period. Widen the period in the top bar, or pass a voucher to one of its ledgers."
       : "No group has a balance in this period. Widen the period in the top bar, or pass a voucher to start the books.";
-    render(report.group?.name || "Group summary", `${toolbar}${report.group ? `<p class="actions"><a href="#/c/${esc(id)}/group-summary">All groups</a></p>` : ""}${scroll(`<table><thead><tr><th>${report.group ? "Ledger" : "Group"}</th><th class="figure">Period debit</th><th class="figure">Period credit</th><th class="figure">Closing debit</th><th class="figure">Closing credit</th></tr></thead><tbody>${rows.join("") || emptyRow(5, empty)}</tbody><tfoot><tr class="total"><th scope="row" colspan="3">Closing totals</th><td class="figure">${money(report.debit)}</td><td class="figure">${money(report.credit)}</td></tr></tfoot></table>`)}`);
+    render(report.group?.name || "Group summary", `${toolbar}${report.group ? `<p class="actions"><a href="#/c/${esc(id)}/group-summary">All groups</a></p>` : ""}${scroll(`<table><thead><tr><th>${report.group ? (report.childGroups?.length ? "Subgroup or ledger" : "Ledger") : "Group"}</th><th class="figure">Period debit</th><th class="figure">Period credit</th><th class="figure">Closing debit</th><th class="figure">Closing credit</th></tr></thead><tbody>${rows.join("") || emptyRow(5, empty)}</tbody><tfoot><tr class="total"><th scope="row" colspan="3">Closing totals</th><td class="figure">${money(report.debit)}</td><td class="figure">${money(report.credit)}</td></tr></tfoot></table>`)}`);
     return true;
   }
   if (route.name === "cash-bank") {
