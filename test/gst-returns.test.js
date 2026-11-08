@@ -1,3 +1,4 @@
+import { applyCreditReview } from "../lib/gst-credit-review.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { returnWorkbook, columns, worksheetCsv } from "../lib/gst-returns.js";
@@ -7,9 +8,15 @@ import { searchHSN } from "../lib/hsn-directory.js";
 const registration={id:"reg",name:"Synthetic company",gstin:"23ABCDE1234F1Z8",stateCode:"23"};
 const company={gst:{registrations:[registration]}};
 const party={name:"Synthetic party",gstin:"27ABCDE1234F1Z0"};
-function voucher(id,date,changes={},amount=10000) {
+function review(book, vouchers, doc, declarationDate) {
+  return applyCreditReview(book,vouchers,{invoiceId:doc.id,revision:0,requestId:"synthetic-credit-review-001",declarationDate,
+    annualReturnStatus:"not-filed",recipientBasis:"incidence-not-passed",adjustmentGround:"excess-value-or-tax",groundConfirmed:true,
+    reference:"Synthetic consumer credit and price evidence"}).company;
+}
+function voucher(number,date,changes={},amount=10000) {
+  const id=number.toLowerCase();
   const line={itemId:"item",kind:"goods",name:"Sample, part",hsnSac:"8541",unit:"NOS",gstRateBps:1800,supplyStatus:"taxable",quantity:"1",taxablePaise:amount,igstPaise:Math.round(amount*.18),cgstPaise:0,sgstPaise:0,utgstPaise:0,cessPaise:0,totalPaise:amount+Math.round(amount*.18),taxPaise:Math.round(amount*.18)};
-  return {id,date,gst:{id,date,number:id,type:"Sales",direction:"sales",registration,registrationId:"reg",party,placeOfSupply:"27",supplyCategory:"domestic",items:[line],totals:line,...changes}};
+  return {id,date,gst:{id,date,number,type:"Sales",direction:"sales",registration,registrationId:"reg",partyId:"buyer",party,placeOfSupply:"27",supplyCategory:"domestic",items:[line],totals:line,...changes}};
 }
 test("official HSN lookup includes leading zero, spaced source codes and service codes",async()=>{
   assert.equal((await searchHSN("0101")).items[0].code,"0101");
@@ -19,8 +26,9 @@ test("official HSN lookup includes leading zero, spaced source codes and service
 test("GSTR-1 groups B2B, net B2CS, B2CL by historical threshold and preserves source amounts",()=>{
   const unregistered={gstin:"",name:"Consumer"};
   const source=[voucher("SI-1","2026-06-01"),voucher("SI-2","2026-06-02",{party:unregistered},10000001),
-    voucher("SI-3","2026-06-02",{party:unregistered}),voucher("CN-1","2026-06-03",{party:unregistered,type:"Credit Note",originalInvoiceId:"SI-3",stockEffect:"none"},5000)];
-  const report=returnWorkbook(company,source,"reg","2026-06");
+    voucher("SI-3","2026-06-02",{party:unregistered}),voucher("CN-1","2026-06-03",{party:unregistered,type:"Credit Note",originalInvoiceId:"si-3",originalNumber:"SI-3",originalDate:"2026-06-02",stockEffect:"none"},5000)];
+  const reviewed=review(company,source,source.at(-1).gst,"2026-07-10");
+  const report=returnWorkbook(reviewed,source,"reg","2026-06");
   assert.equal(report.sheets["b2b,sez,de"].length,1); assert.equal(report.sheets.b2cl.length,1);
   assert.equal(report.sheets.b2cs[0][4],"50.00"); assert.equal(report.sheets["hsn(b2c)"][0][3],"2");
   assert.deepEqual(report.sheets.docs.map(r=>r[3]).sort(),[1,3]); assert.equal(report.issues.length,0);
@@ -44,14 +52,31 @@ test("GSTR-2B compares supplier invoices, tax heads, missing entries and explici
 test("HSN reconciliation recomputes B2B and B2C taxable values from the exported worksheets and exposes unclassified credits",()=>{
   const consumer={name:"Consumer",gstin:""};
   const supplies=[voucher("R1","2026-05-01"),voucher("U1","2026-05-02",{party:consumer}),
-    voucher("U-CREDIT","2026-05-03",{party:consumer,type:"Credit Note",originalInvoiceId:"U1",stockEffect:"none"},1200),
-    voucher("R-DEBIT","2026-05-04",{type:"Debit Note",originalInvoiceId:"R1",stockEffect:"none"},550)];
-  const normal=returnWorkbook(company,supplies,"reg","2026-05");
+    voucher("U-CREDIT","2026-05-03",{party:consumer,type:"Credit Note",originalInvoiceId:"u1",originalNumber:"U1",originalDate:"2026-05-02",stockEffect:"none"},1200),
+    voucher("R-DEBIT","2026-05-04",{type:"Debit Note",originalInvoiceId:"r1",stockEffect:"none"},550)];
+  const reviewed=review(company,supplies,supplies[2].gst,"2026-06-11");
+  const normal=returnWorkbook(reviewed,supplies,"reg","2026-05");
   assert.deepEqual(normal.hsnCheck.reconciliation,[{type:"b2b",supplyPaise:10550,hsnPaise:10550,differencePaise:0},{type:"b2c",supplyPaise:8800,hsnPaise:8800,differencePaise:0}]);
   supplies[2].gst.originalInvoiceId="unresolved";
   const gap=returnWorkbook(company,supplies,"reg","2026-05");
-  assert.equal(gap.hsnCheck.reconciliation[1].differencePaise,-1200);
-  assert.equal(gap.issues[0].id,"U-CREDIT");
+  assert.equal(gap.hsnCheck.reconciliation[1].differencePaise,0);
+  assert.equal(gap.creditReviews[0].eligible,false);
+  assert.equal(gap.issues[0].id,"u-credit");
+});
+
+test("a late credit leaves the issued note and books intact and reduces no working return values",()=>{
+  const consumer={name:"Consumer",gstin:""};
+  const original=voucher("S1","2026-04-02",{party:consumer});
+  const note=voucher("C1","2027-12-01",{party:consumer,type:"Credit Note",originalInvoiceId:original.id,originalNumber:"S1",originalDate:original.date,stockEffect:"quantity"},1000);
+  const vouchers=[original,note],reviewed=review(company,vouchers,note.gst,"2028-01-11");
+  const report=returnWorkbook(reviewed,vouchers,"reg","2027-12");
+  assert.equal(report.creditReviews[0].eligible,false);
+  assert.equal(report.creditReviews[0].deadline,"2027-11-30");
+  assert.equal(report.sheets.docs.length,1);
+  assert.equal(report.evidence[0].totalPaise,-1180);
+  assert.equal(report.bookSummary.outwardTaxable.igstPaise,-180);
+  assert.equal(report.summary.outwardTaxable.igstPaise,0);
+  for (const sheet of ["b2cs","cdnur","exemp","hsn(b2c)"]) assert.deepEqual(report.sheets[sheet],[]);
 });
 
 test("goods and service code search pages the entire selectable catalogue and keeps exact leading-zero codes first",async()=>{

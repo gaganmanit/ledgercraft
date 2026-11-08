@@ -6,7 +6,7 @@
 .gst-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.2rem; margin-top: 1rem; }
 .gst-form label { font-size: .86rem; }
 .gst-wide { grid-column: 1 / -1; }
-.gst-form [hidden], .gst-compose [hidden] { display: none !important; }
+.gst-form [hidden], .gst-compose [hidden], [data-section34-review] [hidden] { display: none !important; }
 .gst-form p[data-form-message]:empty { display: none; }
 .gst-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
 .gst-section-heading > span { color: var(--ink-soft); font-size: .83rem; }
@@ -24,7 +24,7 @@
 .gst-items-heading { margin-top: 2rem; }
 .gst-items-heading a { font-size: .85rem; }
 .gst-line-scroll { overflow-x: auto; margin: 0 -1px 1rem; }
-.gst-entry-table { table-layout: fixed; min-width: 840px; font-size: .76rem; margin-top: .5rem; }
+.gst-line-scroll .gst-entry-table { table-layout: fixed; min-width: 840px; font-size: .76rem; margin-top: .5rem; }
 .gst-entry-table th { font-size: .68rem; }
 .gst-entry-table th:first-child { width: 26%; }
 .gst-entry-table th:nth-child(2) { width: 10%; }

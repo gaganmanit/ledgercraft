@@ -115,3 +115,99 @@ test("Tally purchase through 2B, pending stock valuation, reviewed ITC, period r
     }
   });
 });
+
+test("Tally note cycle joins outward returns, supplier 2B notes, ITC dispositions and restored stock", async () => {
+  await withDesk(async ({api,importFile,base}) => {
+    const source=await sourceFile("tally-note-cycle.xml");
+    const imported=await importFile(source,{companyName:"Meridian Fixture Books",booksFrom:"2025-04-01"});
+    const id=imported.company.id, book="/api/companies/"+id, migration="/api/tally/companies/"+id;
+    assert.equal(imported.vouchers.length,6);
+    const ledger=name=>imported.company.ledgers.find(row=>row.name===name).id;
+    const {registration}=await api(book+"/gst/settings",{name:"Meridian Fixture Books",gstin:"23ABCDE1234F1Z8",stateCode:"23",address:"Synthetic MP registration"},"PUT");
+    const {party:vendor}=await api(book+"/gst/parties",{name:"Deccan Fixture Vendor",kind:"supplier",supplierLedgerId:ledger("Deccan Fixture Vendor"),gstin:"27PQRST5678L1Z0",stateCode:"27",address:"Synthetic MH registration"});
+    const {party:customer}=await api(book+"/gst/parties",{name:"Central Fixture Customer",kind:"customer",customerLedgerId:ledger("Central Fixture Customer"),gstin:"23LMNOP1234Q1ZE",stateCode:"23",address:"Synthetic MP customer"});
+    const receiptItem=imported.company.stock.masters[0];
+    const {item}=await api(book+"/gst/items",{name:receiptItem.name,stockItemId:receiptItem.id,kind:"goods",hsnSac:"8541",unit:"NOS",gstRateBps:1800});
+    const purchaseAccounts={party:vendor.supplierLedgerId,purchase:ledger("Purchase"),igst:ledger("Input IGST")};
+    const salesAccounts={party:customer.customerLedgerId,sales:ledger("Domestic Sales"),cgst:ledger("Output CGST"),sgst:ledger("Output SGST")};
+    const plan=()=>api(migration+"/gst?view=desk");
+    let sequence=0;
+    const token=()=>`cycle-request-id-${String(++sequence).padStart(6,"0")}`;
+    async function map(number,inward,extra={},financial=false) {
+      const current=await plan(),row=current.rows.find(row=>row.number===number);
+      await api(migration+"/gst/mapping",{recordId:row.recordId,revision:current.revision,requestId:token(),registrationId:registration.id,partyId:(inward?vendor:customer).id,
+        items:financial?[]:[{sourceName:receiptItem.name,itemId:item.id}],accounts:inward?purchaseAccounts:salesAccounts,
+        evidence:{name:"Synthetic note cycle documents",reference:"Source invoice or statutory note and receipt review "+number},...extra});
+    }
+    async function activate(numbers) {
+      const current=await plan(),rows=numbers.map(n=>current.rows.find(row=>row.number===n));
+      assert.ok(rows.every(row=>row.status==="ready"),JSON.stringify(rows.map(r=>[r.number,r.blockers])));
+      const body={recordIds:rows.map(r=>r.recordId),reviewHash:current.reviewHash,revision:current.revision,requestId:token()};
+      await api(migration+"/gst/activate",body);
+      assert.equal((await api(migration+"/gst/activate",body)).replayed,true);
+    }
+    await map("P-48",true,{purchaseReview:{receivedDate:"2026-04-02"}});
+    await map("S-10",false);
+    await activate(["P-48","S-10"]);
+    const ordinary=await api(book);
+    const purchase=ordinary.vouchers.find(v=>v.number==="P-48").gst, sale=ordinary.vouchers.find(v=>v.number==="S-10").gst;
+    const itcEvidence={basis:"Synthetic section 16 review",documentReference:"Supplier invoice and statement",invoiceHeld:true,received:true,businessUse:true,notBlocked:true,supplierReported:true,supplierTaxPaid:true,returnFurnished:true,paymentReview:true,noTaxDepreciation:true,annualReturnStatus:"not-filed"};
+    await api(book+"/gst/itc/claim",{invoiceId:purchase.id,date:"2026-04-05",reference:"Synthetic claim before return",requestId:token(),evidence:itcEvidence});
+    const noteSpecs=[["CN-2",false,true,0],["DN-7",false,false,1000],["PD-5",true,true,0],["PC-6",true,false,2000]];
+    for(const [number,inward,physical,unitPricePaise] of noteSpecs){
+      const original=inward?purchase:sale;
+      await map(number,inward,{noteReview:{direction:inward?"purchase":"sales",originalInvoiceId:original.id,originalNumber:inward?purchase.supplierInvoiceNumber:sale.number,originalDate:inward?purchase.supplierInvoiceDate:sale.date,
+        stockEffect:physical?"quantity":"none",...(inward?{supplierDocumentConfirmed:true}:{}),lines:[physical?{sourceLineIndex:0,originalLineIndex:0}:{originalLineIndex:0,quantity:"1",unitPricePaise,discountBps:0}]}},!physical);
+    }
+    await activate(noteSpecs.map(row=>row[0]));
+    const active=await api(book),get=number=>active.vouchers.find(v=>v.number===number);
+    for(const baseline of imported.vouchers){
+      const v=get(baseline.number);
+      assert.equal(v.id,baseline.id);assert.equal(v.type,baseline.type);assert.deepEqual(v.lines,baseline.lines);
+    }
+    assert.deepEqual(noteSpecs.map(([number])=>[get(number).type,get(number).gst.type,get(number).gst.direction]),[
+      ["Credit Note","Credit Note","sales"],["Debit Note","Debit Note","sales"],["Debit Note","Credit Note","purchase"],["Credit Note","Debit Note","purchase"]
+    ]);
+    assert.equal(active.company.stock.journals.length,4);
+    const stock=await api(book+"/stock?to=2026-04-30");
+    assert.equal(stock.items[0].quantity,"1");
+    const period="?registration="+registration.id+"&month=2026-04";
+    const held=await api(book+"/gst-returns"+period);
+    assert.deepEqual(held.sheets.cdnr.map(row=>row[2]),["DN-7"]);
+    assert.equal(held.summary.outwardTaxable.taxablePaise-held.bookSummary.outwardTaxable.taxablePaise,15000);
+    assert.equal(held.creditReviews.find(row=>row.id===get("CN-2").id).eligible,false);
+    const review={invoiceId:get("CN-2").id,revision:held.creditReviewRevision,requestId:token(),declarationDate:"2026-05-11",
+      annualReturnStatus:"not-filed",recipientBasis:"not-availed",adjustmentGround:"goods-returned",groundConfirmed:true,reference:"Synthetic recipient confirmation and return receipt"};
+    await api(book+"/gst-returns/credit-review",review);
+    assert.equal((await api(book+"/gst-returns/credit-review",review)).replayed,true);
+    const working=await api(book+"/gst-returns"+period);
+    assert.equal(working.creditReviews.find(row=>row.id===get("CN-2").id).eligible,true);
+    assert.deepEqual(working.sheets.cdnr.map(r=>[r[2],r[4],r[8],r[11]]).sort(),[["CN-2","C","177.00","150.00"],["DN-7","D","11.80","10.00"]]);
+    assert.equal(working.summary.purchases.taxablePaise,12000);assert.equal(working.summary.purchases.igstPaise,2160);
+    assert.equal(working.itc.table4["4A(5)"].igstPaise,3600);
+    const portalNote=(typ,num,dt,val,txval,igst)=>({typ,ntnum:num,dt,pos:"23",rev:"N",itcavl:"Y",val,txval,igst});
+    const statement={gstin:registration.gstin,rtnprd:"042026",itcsumm:{},docdata:{cdnr:[{ctin:vendor.gstin,nt:[portalNote("C","SCN/9","09-04-2026",118,100,18),portalNote("D","SDN/1","11-04-2026",23.6,20,3.6)]}]}};
+    const recorded=await api(book+"/gst-returns/statements"+period,{files:[{name:"Synthetic April CDN.json",base64:Buffer.from(JSON.stringify(statement)).toString("base64")}]});
+    const notes=recorded.results.filter(r=>r.section==="cdnr");
+    assert.deepEqual(notes.map(n=>[n.status,n.bookId]),[["Matched",get("PD-5").id],["Matched",get("PC-6").id]]);
+    const evidence=async id=>(await api(book+"/gst-returns/statement-evidence?invoice="+id)).matches[0];
+    const reduction=await api(book+"/gst/itc/credit-note",{invoiceId:get("PD-5").id,date:"2026-04-15",reference:"Supplier credit disposition",requestId:token(),
+      evidence:{basis:"Review of credit previously claimed",documentReference:"SCN/9",statement:await evidence(get("PD-5").id)},
+      creditSources:[{invoiceId:purchase.id,lineIndex:0,noteLineIndex:0,bucket:"claimable",igstPaise:1800}]});
+    assert.deepEqual(reduction.record.returnRows.map(r=>[r.table,r.sign,r.igstPaise]),[["4A(5)",-1,1800]]);
+    assert.ok(reduction.voucher.lines.some(l=>l.ledgerId===purchaseAccounts.igst && l.dc==="Dr" && l.paise===1800));
+    await api(book+"/gst/itc/claim",{invoiceId:get("PC-6").id,date:"2026-04-16",reference:"Actual additional supplier tax",requestId:token(),evidence:{...itcEvidence,documentReference:"SDN/1",statement:await evidence(get("PC-6").id)}});
+    assert.equal((await api(book+"/gst-returns"+period)).itc.table4["4A(5)"].igstPaise,2160);
+    const final=await api(book);
+    assert.equal(final.vouchers.filter(v=>v.gst?.tallyOrigin?.version===3).length,4);
+    for(const url of [book+"/backup",migration+"/archive"]){
+      const restored=await api("/api/import",await api(url));
+      assert.deepEqual(restored.vouchers,final.vouchers);
+      assert.deepEqual(restored.company.stock,final.company.stock);
+      assert.deepEqual(restored.company.gst.itc,final.company.gst.itc);
+      assert.deepEqual(restored.company.gst.creditReviews,final.company.gst.creditReviews);
+      const r=await fetch(base+"/api/tally/companies/"+restored.company.id+"/file/0");
+      assert.equal(Buffer.from(await r.arrayBuffer()).toString("base64"),source.base64);
+    }
+  });
+});

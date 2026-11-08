@@ -98,7 +98,7 @@ function bindReview(ctx) {
       const familyId = selected.originalInvoiceId;
       for (const noteLine of selected.lines) {
         const matching = report.documents.filter(document => document.type !== 'Credit Note' && (document.id === familyId || document.originalInvoiceId === familyId));
-        const options = matching.flatMap(document => document.lines.filter(line => line.itemId === noteLine.itemId && line.gstRateBps === noteLine.gstRateBps && line.cessRateBps === noteLine.cessRateBps).flatMap(line => Object.keys(BUCKETS).filter(bucket => total(line.balances[bucket])).map(bucket => ({ document, line, bucket }))));
+        const options = matching.flatMap(document => document.lines.filter(line => line.itemId === noteLine.itemId && (noteLine.originalLineIndex == null || line.originalLineIndex === noteLine.originalLineIndex) && line.gstRateBps === noteLine.gstRateBps && line.cessRateBps === noteLine.cessRateBps).flatMap(line => Object.keys(BUCKETS).filter(bucket => total(line.balances[bucket])).map(bucket => ({ document, line, bucket }))));
         for (const option of options) allocationRows.push({ invoiceId: option.document.id, lineIndex: option.line.lineIndex, noteLineIndex: noteLine.lineIndex, bucket: option.bucket,
           label: `${option.document.supplierInvoiceNumber || option.document.number} · line ${option.line.lineIndex + 1} · ${BUCKETS[option.bucket]}`,
           amounts: Object.fromEntries(HEADS.map(head => [head + 'Paise', Math.min(option.line.balances[option.bucket][head + 'Paise'], noteLine.original[head + 'Paise'])])), checked: options.length === 1 });

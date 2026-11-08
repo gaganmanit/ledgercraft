@@ -395,10 +395,16 @@ async function composeInvoice(context) {
       form.querySelector("[data-draft-status]").textContent = "Draft storage is full. Keep this page open until posting.";
     }
   };
+  const linkedOriginal = () => form.elements.type.value.includes("Note") && invoices.find(invoice => invoice.id === form.elements.originalInvoiceId.value);
   const drawLines = () => {
+    const original = linkedOriginal();
     rows.innerHTML = lines.map((line, index) => {
-      const item = items.find(row => row.id === line.itemId);
-      return `<tr data-line="${index}"><td><select data-field="itemId" aria-label="Item ${index + 1}" required><option value="">Choose item</option>${items.map(row => `<option value="${esc(row.id)}"${line.itemId === row.id ? " selected" : ""}>${esc(row.name)}</option>`).join("")}</select><small class="gst-item-code">${item ? `${esc(item.hsnSac)} · ${esc(item.unit || "Service")}` : "HSN / SAC · Unit"}</small><label class="gst-line-godown"${item?.kind === "service" ? " hidden" : ""}>Godown<select data-field="godownId" aria-label="Godown ${index + 1}"${item?.kind === "service" ? " disabled" : " required"}><option value="">Choose godown</option>${godowns.map(location => `<option value="${esc(location.id)}"${(line.godownId ?? godowns[0].id) === location.id ? " selected" : ""}>${esc(location.name)}</option>`).join("")}</select></label></td>
+      const historical = original && line.originalLineIndex !== undefined && line.originalLineIndex !== "" ? original.items[Number(line.originalLineIndex)] : null;
+      const item = original ? historical : items.find(row => row.id === line.itemId);
+      const selector = original
+        ? `<select data-field="originalLineIndex" aria-label="Original invoice line ${index + 1}" required><option value="">Choose original invoice line</option>${original.items.map((source, i) => `<option value="${i}"${historical === source ? " selected" : ""}>Line ${i+1} · ${esc(source.name)} · ${esc(source.quantity)} ${esc(source.unit)} · ${esc(decimal(source.gstRateBps))}%</option>`).join("")}</select><input type="hidden" data-field="itemId" value="${esc(historical?.itemId || "")}">`
+        : `<select data-field="itemId" aria-label="Item ${index + 1}" required><option value="">Choose item</option>${items.map(row => `<option value="${esc(row.id)}"${line.itemId === row.id ? " selected" : ""}>${esc(row.name)}</option>`).join("")}</select>`;
+      return `<tr data-line="${index}"><td>${selector}<small class="gst-item-code">${item ? `${esc(item.hsnSac)} · ${esc(item.unit || "Service")}` : "HSN / SAC · Unit"}</small><label class="gst-line-godown"${item?.kind === "service" ? " hidden" : ""}>Godown<select data-field="godownId" aria-label="Godown ${index + 1}"${item?.kind === "service" ? " disabled" : " required"}><option value="">Choose godown</option>${godowns.map(location => `<option value="${esc(location.id)}"${(line.godownId ?? godowns[0].id) === location.id ? " selected" : ""}>${esc(location.name)}</option>`).join("")}</select></label></td>
         <td><input data-field="quantity" aria-label="Quantity ${index + 1}" value="${esc(line.quantity)}" inputmode="decimal" required></td>
         <td><input data-field="unitPrice" aria-label="Unit price ${index + 1}" value="${esc(line.unitPrice)}" inputmode="decimal" required></td>
         <td><input data-field="discount" aria-label="Discount percent ${index + 1}" value="${esc(line.discount)}" type="number" min="0" max="100" step="0.01" required></td>
@@ -453,6 +459,7 @@ async function composeInvoice(context) {
     const data = new FormData(form);
     const type = data.get("type");
     const quantityMovement = !type.includes("Note") || data.get("stockEffect") === "quantity";
+    const entryLines = captureLines();
     return {
       type, direction: type.includes("Note") ? data.get("direction") : type === "Purchase" ? "purchase" : "sales",
       registrationId: data.get("registrationId"), partyId: data.get("partyId"), date: data.get("date"), placeOfSupply: data.get("placeOfSupply"), pricing: data.get("pricing"),
@@ -466,7 +473,8 @@ async function composeInvoice(context) {
       shippingAddress: data.get("shippingAddress"), narration: data.get("narration"), reverseCharge: data.get("reverseCharge") === "true", requestId,
       rcm: data.get("reverseCharge") === "true" ? { applicabilityConfirmed: form.elements.rcmConfirmed.checked, basisReference: data.get("rcmBasis"), receiptDate: data.get("rcmReceiptDate") || data.get("date"), supplierInvoiceDate: data.get("rcmSupplierDate") || data.get("date"), selfInvoiceDate: data.get("rcmSelfDate") || data.get("date"), associatedEnterprise: data.get("rcmAssociated") === "true" } : undefined,
       itcEligibility: data.get("itcEligibility"), stockEffect: type.includes("Note") ? data.get("stockEffect") : "quantity",
-      items: captureLines().map(line => ({ itemId: line.itemId, ...(quantityMovement && items.find(item => item.id === line.itemId)?.kind === "goods" ? { godownId: line.godownId } : {}), quantity: line.quantity, unitPricePaise: parseRupees(line.unitPrice), discountBps: rateBps(line.discount), gstRateBps: rateBps(line.gstRate), cessRateBps: rateBps(line.cessRate), supplyStatus: line.supplyStatus })),
+      ...(linkedOriginal() ? { originalLineMap: entryLines.map(line => line.originalLineIndex === "" ? null : Number(line.originalLineIndex)) } : {}),
+      items: entryLines.map(line => ({ itemId: line.itemId, ...(quantityMovement && items.find(item => item.id === line.itemId)?.kind === "goods" ? { godownId: line.godownId } : {}), quantity: line.quantity, unitPricePaise: parseRupees(line.unitPrice), discountBps: rateBps(line.discount), gstRateBps: rateBps(line.gstRate), cessRateBps: rateBps(line.cessRate), supplyStatus: line.supplyStatus })),
     };
   };
   const preview = async () => {
@@ -504,6 +512,19 @@ async function composeInvoice(context) {
   });
   form.addEventListener("change", event => {
     const input = event.target;
+    if (input.dataset.field === "originalLineIndex") {
+      const historical = input.value !== "" && linkedOriginal()?.items[Number(input.value)];
+      const row = input.closest("tr");
+      row.querySelector('[data-field="itemId"]').value = historical?.itemId || "";
+      if (historical) {
+        row.querySelector('[data-field="unitPrice"]').value = rupees(historical.unitPricePaise);
+        row.querySelector('[data-field="discount"]').value = decimal(historical.discountBps);
+        row.querySelector('[data-field="gstRate"]').value = decimal(historical.gstRateBps);
+        row.querySelector('[data-field="cessRate"]').value = decimal(historical.cessRateBps);
+        row.querySelector('[data-field="supplyStatus"]').value = historical.supplyStatus;
+        row.querySelector(".gst-item-code").textContent = `${historical.hsnSac} · ${historical.unit}`;
+      }
+    }
     if (input.dataset.field === "itemId") {
       const item = items.find(row => row.id === input.value);
       if (item) {
@@ -542,6 +563,8 @@ async function composeInvoice(context) {
         form.elements.partyId.value = original.partyId;
         form.elements.registrationId.value = original.registrationId;
         form.elements.placeOfSupply.value = original.placeOfSupply;
+        form.elements.supplyCategory.value = original.supplyCategory;
+        if (original.exportMode) form.elements.exportMode.value = original.exportMode;
         form.elements.originalNumber.value = original.supplierInvoiceNumber || original.number;
         form.elements.originalDate.value = original.supplierInvoiceDate || original.date;
         form.elements.reverseCharge.value = String(Boolean(original.reverseCharge));
@@ -554,6 +577,20 @@ async function composeInvoice(context) {
           form.elements.rcmConfirmed.checked = false;
         }
       }
+    }
+    if (input.name === "type" || input.name === "originalInvoiceId") {
+      lines = captureLines();
+      const original = linkedOriginal();
+      for (const line of lines) {
+        delete line.originalLineIndex;
+        if (!original) continue;
+        const matches = original.items.flatMap((source, i) => source.itemId === line.itemId ? [i] : []);
+        if (matches.length === 1) {
+          const index = matches[0], source = original.items[index];
+          Object.assign(line, { originalLineIndex: String(index), gstRate: decimal(source.gstRateBps), cessRate: decimal(source.cessRateBps), supplyStatus: source.supplyStatus });
+        }
+      }
+      drawLines();
     }
     conditionalFields();
     remember();
@@ -629,7 +666,7 @@ function documentMarkup(invoice, helpers) {
   return `<article class="gst-document">
     ${exportText ? `<p class="gst-export-endorsement">${esc(exportText)}</p>` : ""}
     <div class="gst-document-identity"><div><span>Document number</span><strong>${esc(invoice.number)}</strong></div><div><span>Date</span><strong>${dateLabel(invoice.date)}</strong></div></div>
-    ${purchase && !invoice.rcm?.selfInvoiceRequired ? `<p class="gst-reference">Supplier invoice ${esc(invoice.supplierInvoiceNumber || invoice.number)}${invoice.supplierInvoiceDate ? " dated " + dateLabel(invoice.supplierInvoiceDate) : ""}</p>` : ""}
+    ${purchase && !invoice.rcm?.selfInvoiceRequired ? `<p class="gst-reference">Supplier ${invoice.type === "Credit Note" ? "credit note" : invoice.type === "Debit Note" ? "debit note" : "invoice"} ${esc(invoice.supplierInvoiceNumber || invoice.number)}${invoice.supplierInvoiceDate ? " dated " + dateLabel(invoice.supplierInvoiceDate) : ""}</p>` : ""}
     ${invoice.originalNumber || invoice.originalInvoiceId ? `<p class="gst-reference">Against invoice ${esc(invoice.originalNumber || invoice.originalInvoiceId)}${invoice.originalDate ? " dated " + dateLabel(invoice.originalDate) : ""}</p>` : ""}
     <div class="gst-addresses"><section><h2>Supplier</h2>${address(supplier)}</section><section><h2>Recipient</h2>${address(recipient)}</section></div>
     ${invoice.reverseCharge ? `<p class="gst-export-endorsement">Tax is payable by the recipient under reverse charge.</p><p class="gst-reference">${esc(invoice.rcm.basisReference)}</p>` : ""}

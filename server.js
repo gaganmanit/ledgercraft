@@ -28,6 +28,7 @@ const publicDir = path.join(root, "public");
 const staticFiles = {
   "/": ["index.html", "text/html; charset=utf-8"],
   "/styles.css": ["styles.css", "text/css; charset=utf-8"],
+  "/gst-credit-review-ui.js": ["gst-credit-review-ui.js", "text/javascript; charset=utf-8"],
   "/app.js": ["app.js", "text/javascript; charset=utf-8"],
   "/tally-bridge.ps1": ["tally-bridge.ps1", "application/octet-stream"],
   "/favicon.svg": ["favicon.svg", "image/svg+xml"],

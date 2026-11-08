@@ -1,7 +1,8 @@
-import { formatINR } from "/money.js";
+import { formatINR, parseRupees } from "/money.js";
 
 const components = ["cgst", "sgst", "utgst", "igst", "cess"];
 const isPurchase = row => row?.source?.direction === "purchase" || row?.source?.type === "Purchase" || row?.type === "Purchase";
+const isNote = row => row?.source?.note === true || ["Credit Note", "Debit Note"].includes(row?.type);
 const dateLabel = date => /^\d{4}-\d{2}-\d{2}$/.test(date || "") ? date.split("-").reverse().join("-") : date || "—";
 
 export async function installTallyGstReview({ root, api, esc, base, book, still, token, focus }) {
@@ -13,6 +14,7 @@ export async function installTallyGstReview({ root, api, esc, base, book, still,
   section.querySelector("[data-tally-gst-report]").href = `${base}/gst/report`;
   let state, busy = false, loading = false, generation = 0, offset = 0, search = "";
   const drafts = new Map();
+  const noteOriginals = new Map(), noteLookups = new Map();
   const mastersBase = base.replace("/api/tally/companies/", "/api/companies/") + "/gst";
   const money = value => esc(formatINR(value || 0));
   const current = () => still(token) && section.isConnected;
@@ -34,6 +36,7 @@ export async function installTallyGstReview({ root, api, esc, base, book, still,
     section.querySelector("[data-tally-gst-page]").textContent = page.total ? `${page.offset + 1}–${Math.min(page.offset + page.limit, page.total)} of ${page.total} matching source invoices` : "No matching source invoices";
     section.querySelector("[data-tally-gst-previous]").disabled = busy || loading || page.offset === 0;
     section.querySelector("[data-tally-gst-next]").disabled = busy || loading || page.offset + page.limit >= page.total;
+    updateNoteButtons();
   };
   const originalPurchaseValue = (source, key) => {
     if (key === "supplierInvoiceNumber") return source.supplierDocument?.sourceNumber ?? source.sourceInvoiceNumber ?? "";
@@ -41,6 +44,131 @@ export async function installTallyGstReview({ root, api, esc, base, book, still,
     const supplied = source.placeOfSupplyEvidence?.sourceValue ?? source.placeOfSupply ?? "";
     return state.states?.find(entry => entry.code === supplied || entry.name.toLowerCase() === String(supplied).toLowerCase())?.code || supplied;
   };
+  const noteOriginal = id => noteOriginals.get(id);
+  const originalNumber = invoice => invoice?.direction === "purchase" ? invoice.supplierInvoiceNumber : invoice?.number;
+  const originalDate = invoice => invoice?.direction === "purchase" ? invoice.supplierInvoiceDate || invoice.date : invoice?.date;
+  const originalNoteValue = (source, key) => key === "originalNumber" ? source.originalDocument?.sourceNumber || "" : key === "originalDate" ? source.originalDocument?.sourceDate || "" : key === "supplierNoteNumber" ? source.supplierDocument?.sourceNumber || "" : source.supplierDocument?.sourceDate || "";
+  const noteCandidates = (row, registrationId, partyId) => {
+    const lookup = noteLookups.get(row.recordId);
+    return [...new Map([...(lookup?.rows || []), ...(lookup?.selectedInvoice ? [lookup.selectedInvoice] : [])].map(invoice => [invoice.id, invoice])).values()].filter(invoice => invoice.direction === row.source.direction && (!registrationId || invoice.registrationId === registrationId) && (!partyId || invoice.partyId === partyId));
+  };
+  const originalLabel = invoice => `${originalNumber(invoice)} · ${dateLabel(originalDate(invoice))} · ${invoice.party?.name || ""} · ₹${formatINR(invoice.totals.totalPaise)}`;
+  const noteEffect = row => {
+    const credit = row.source.type === "Credit Note";
+    return isPurchase(row)
+      ? `${credit ? "Reduces" : "Increases"} the supplier balance and purchase taxable value/tax. ${credit ? "Purchase input-tax reduction follows the linked original credit review." : "Additional input credit stays pending review."}`
+      : `${credit ? "Reduces" : "Increases"} the customer balance and outward taxable value/tax.`;
+  };
+  const noteHtml = (row, active = false) => {
+    const source = row.source, review = row.mapping?.noteReview || {}, purchase = isPurchase(row), original = noteOriginal(review.originalInvoiceId);
+    const physical = source.noteInventory && source.items.some(item => Number(item.actualQuantity) > 0);
+    const identity = `<section data-tally-note-identity><h3>${esc(purchase ? "Supplier GST " : "Outward GST ")}${esc(source.type)}</h3><p>${purchase ? `Your Tally ${esc(source.sourceVoucherType || row.type)} records this supplier-issued GST ${esc(source.type)}.` : `The original Tally ${esc(source.sourceVoucherType || row.type)} remains the accounting entry.`}</p><dl class="tally-fields"><dt>Internal accounting voucher</dt><dd>${esc(row.number)} · ${esc(dateLabel(row.date))}</dd><dt>Source original invoice reference</dt><dd>${esc(source.originalDocument?.sourceNumber || "Not supplied")} · ${esc(dateLabel(source.originalDocument?.sourceDate))}</dd>${purchase ? `<dt>Source supplier ${esc(source.type.toLowerCase())}</dt><dd>${esc(originalNoteValue(source, "supplierNoteNumber") || "Not supplied")} · ${esc(dateLabel(originalNoteValue(source, "supplierNoteDate")))}</dd>` : ""}</dl><p data-tally-note-effect>${esc(noteEffect(row))}</p><p data-tally-note-impact>${source.type === "Credit Note" ? "Decrease" : "Increase"}: ${!source.noteInventory && (source.taxablePaise === null || source.taxablePaise === undefined) ? `source accounting total ₹${money(source.totalPaise)}` : `${source.taxablePaise === null || source.taxablePaise === undefined ? "source item value" : "taxable value"} ₹${money(source.taxablePaise ?? source.itemValuePaise)}`} · tax ₹${money(source.taxPaise)}.</p></section>`;
+    if (active) return identity + `<p data-tally-note-linked>Linked original invoice: <a href="${book}/gst-document/${encodeURIComponent(review.originalInvoiceId)}">${esc(original ? originalLabel(original) : `${review.originalNumber} · ${dateLabel(review.originalDate)}`)}</a>. Stock: ${review.stockEffect === "quantity" ? "reviewed physical movement" : "financial adjustment only"}.</p>`;
+    return `${identity}<h3>Original invoice and note review</h3><div class="tally-gst-search"><label>Find original invoice<input name="noteOriginalSearch" type="search" maxlength="160" value="${esc(noteLookups.get(row.recordId)?.q ?? [source.originalDocument?.sourceNumber, source.originalDocument?.sourceDate].filter(Boolean).join(" "))}"></label><button type="button" class="ghost" data-search-note-originals>Search original invoices</button></div><p data-note-original-status role="status">Open this note to load matching original invoices.</p><div class="actions"><button type="button" class="ghost" data-previous-note-originals disabled>Previous original invoices</button><button type="button" class="ghost" data-next-note-originals disabled>Next original invoices</button></div><div class="tally-gst-grid">${select("noteOriginalInvoiceId", "Verified original invoice", noteCandidates(row, row.mapping?.registrationId, row.mapping?.partyId), review.originalInvoiceId, originalLabel)}<label>Original invoice number<input name="noteOriginalNumber" required maxlength="16" value="${esc(review.originalNumber || source.originalDocument?.sourceNumber || "")}"></label><label>Original invoice date<input name="noteOriginalDate" type="date" required max="${esc(row.date)}" value="${esc(review.originalDate || source.originalDocument?.sourceDate || "")}"></label>${purchase ? `<label>Supplier ${esc(source.type.toLowerCase())} number<input name="supplierNoteNumber" required maxlength="16" value="${esc(review.supplierNoteNumber || source.sourceInvoiceNumber || "")}"></label><label>Supplier ${esc(source.type.toLowerCase())} date<input name="supplierNoteDate" type="date" required max="${esc(row.date)}" value="${esc(review.supplierNoteDate || source.sourceInvoiceDate || "")}"></label>` : ""}<label>Physical stock effect<select name="noteStockEffect" required><option value="">Choose explicitly</option><option value="none"${physical ? " disabled" : ""}${review.stockEffect === "none" ? " selected" : ""}>Financial adjustment only · no stock movement</option>${source.noteInventory ? `<option value="quantity"${review.stockEffect === "quantity" ? " selected" : ""}>Use reviewed source actual physical quantity</option>` : ""}</select></label></div><p>${physical ? "The source actual quantity requires a physical stock movement." : !source.noteInventory ? "This source has no physical item rows. Allocate its financial value to the original invoice." : "Review the source actual quantity before choosing the physical effect."}</p><p data-tally-note-original-context></p><div data-tally-note-allocations></div>${source.noteInventory ? "" : '<p><button type="button" class="ghost" data-add-note-allocation>Add financial allocation</button></p>'}${purchase ? `<label class="tally-gst-selection"><input type="checkbox" name="supplierDocumentConfirmed" value="confirmed" required${review.supplierDocumentConfirmed ? " checked" : ""}>I reviewed the supplier-issued GST ${esc(source.type.toLowerCase())} and its document number/date.</label>` : ""}<label class="tally-gst-selection"><input type="checkbox" name="noteReviewed" value="reviewed" required${row.mapping?.noteReview ? " checked" : ""}>I reviewed the linked original invoice, note amounts, relief direction and physical stock effect against the supporting evidence.</label>`;
+  };
+  const renderNoteAllocations = (form, row, saved) => {
+    if (!isNote(row)) return;
+    const original = noteOriginal(form.elements.noteOriginalInvoiceId.value), source = row.source;
+    const prior = saved || [...form.querySelectorAll("[data-note-allocation]")].map(node => Object.fromEntries([...node.querySelectorAll("input,select")].map(input => [input.dataset.noteField, input.value])));
+    const lines = prior.length ? prior : source.noteInventory ? source.items.map(() => ({})) : [{}];
+    form.querySelector("[data-tally-note-allocations]").innerHTML = `<h3>${source.noteInventory ? "Source lines linked to original invoice lines" : "Financial allocation at original invoice HSN and rate"}</h3>` + lines.map((line, index) => `<div class="tally-gst-item" data-note-allocation="${index}">${source.noteInventory ? `<p>${esc(source.items[index].sourceName)} · actual ${esc(source.items[index].actualQuantity ?? "unresolved")} ${esc(source.items[index].unit)} · billed ${esc(source.items[index].quantity)} · ₹${money(source.items[index].valuePaise)}</p>` : ""}<div class="tally-gst-grid"><label>Original invoice line<select name="noteLine-${index}" data-note-field="originalLineIndex" required>${!original?.items && line.originalLineIndex !== undefined && line.originalLineIndex !== "" ? `<option value="${esc(line.originalLineIndex)}" selected>Original line ${Number(line.originalLineIndex) + 1} · loading saved details</option>` : ""}${options((original?.items || []).map((item, itemIndex) => ({ ...item, id: String(itemIndex) })), String(line.originalLineIndex ?? ""), item => `${Number(item.id) + 1}. ${item.name} · HSN ${item.hsnSac} · ${item.gstRateBps / 100}% · original ${item.quantity} ${item.unit}`)}</select></label>${source.noteInventory ? "" : `<label>Allocation quantity<input name="noteQuantity-${index}" data-note-field="quantity" required inputmode="decimal" value="${esc(line.quantity || "")}"></label><label>Allocation unit value ₹<input name="notePrice-${index}" data-note-field="unitPrice" required inputmode="decimal" value="${esc(line.unitPrice ?? (line.unitPricePaise === undefined ? "" : formatINR(line.unitPricePaise)))}"></label><label>Allocation discount %<input name="noteDiscount-${index}" data-note-field="discount" type="number" min="0" max="100" step="0.01" required value="${esc(line.discount ?? (line.discountBps || 0) / 100)}"></label>`}</div>${!source.noteInventory && lines.length > 1 ? '<button type="button" class="ghost" data-remove-note-allocation>Remove allocation</button>' : ""}</div>`).join("");
+    form.querySelector("[data-tally-note-original-context]").textContent = original ? `Selected original: ${originalLabel(original)}. Note amounts use its saved HSN, tax rate and place of supply.` : "Choose the verified original invoice before allocating the note.";
+    for (const button of form.querySelectorAll("[data-remove-note-allocation]")) button.addEventListener("click", () => {
+      button.closest("[data-note-allocation]").remove();
+      renderNoteAllocations(form, row);
+      form.elements.noteStockEffect.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  };
+  const updateNoteButtons = () => {
+    for (const form of section.querySelectorAll("[data-tally-gst-mapping]")) {
+      if (!form.elements.noteOriginalInvoiceId) continue;
+      const lookup = noteLookups.get(form.closest("[data-tally-gst-record]").dataset.tallyGstRecord);
+      const pending = form.dataset.originalLoading === "true", page = lookup?.page;
+      form.querySelector("[data-search-note-originals]").disabled = busy || pending;
+      form.querySelector("[data-previous-note-originals]").disabled = busy || pending || !page || page.offset === 0;
+      form.querySelector("[data-next-note-originals]").disabled = busy || pending || !page || page.offset + page.limit >= page.total;
+      form.querySelector('button[type="submit"]').disabled = busy || pending;
+    }
+  };
+  const preserveNoteChoice = (form, id, label) => {
+    const input = form.elements.noteOriginalInvoiceId;
+    if (id && ![...input.options].some(option => option.value === id)) input.insertAdjacentHTML("beforeend", `<option value="${esc(id)}">${esc(label || "Selected original invoice")}</option>`);
+    input.value = id || "";
+  };
+  const loadNoteOriginals = async (form, row, requestedOffset = 0) => {
+    const selected = form.elements.noteOriginalInvoiceId.value;
+    const request = Number(form.dataset.originalRequest || 0) + 1;
+    form.dataset.originalRequest = String(request);
+    form.dataset.originalLoading = "true";
+    const status = form.querySelector("[data-note-original-status]");
+    status.textContent = "Loading matching original invoices…";
+    updateNoteButtons();
+    const q = form.elements.noteOriginalSearch.value.trim();
+    const query = new URLSearchParams({ direction: row.source.direction, partyLedgerId: row.source.partyLedgerId, q, offset: String(requestedOffset) });
+    for (const name of ["registrationId", "partyId"]) if (form.elements[name].value) query.set(name, form.elements[name].value);
+    if (selected) query.set("selected", selected);
+    try {
+      const result = await api(`${base}/gst/originals?${query}`);
+      if (!current() || !form.isConnected || Number(form.dataset.originalRequest) !== request) return false;
+      noteLookups.set(row.recordId, { ...result, q });
+      if (result.selectedInvoice) noteOriginals.set(result.selectedInvoice.id, result.selectedInvoice);
+      const inUse = new Set([...section.querySelectorAll('[name="noteOriginalInvoiceId"]')].map(input => input.value));
+      for (const id of noteOriginals.keys()) if (noteOriginals.size > 40 && !inUse.has(id)) noteOriginals.delete(id);
+      form.elements.noteOriginalInvoiceId.innerHTML = options(noteCandidates(row, form.elements.registrationId.value, form.elements.partyId.value), result.selectedInvoice?.id || "", originalLabel);
+      const page = result.page;
+      status.textContent = page.total ? `${page.offset + 1}–${Math.min(page.offset + page.limit, page.total)} of ${page.total} matching original invoices` : "No matching original invoices. Clear the search to browse this party's invoices.";
+      if (result.selectedInvoice && !result.rows.some(invoice => invoice.id === result.selectedInvoice.id)) status.textContent += " Selected original retained.";
+      renderNoteAllocations(form, row);
+      renderCorrections(form, row);
+      return true;
+    } catch (error) {
+      if (current() && form.isConnected && Number(form.dataset.originalRequest) === request) status.textContent = error.message;
+      return false;
+    } finally {
+      if (current() && form.isConnected && Number(form.dataset.originalRequest) === request) { form.dataset.originalLoading = "false"; updateNoteButtons(); }
+    }
+  };
+  const updateNoteContext = async (form, row, event) => {
+    if (!isNote(row)) return;
+    const input = form.elements.noteOriginalInvoiceId;
+    if (["registrationId", "partyId"].includes(event?.target.name)) {
+      if (!await loadNoteOriginals(form, row)) return;
+      if (!input.value) renderNoteAllocations(form, row, []);
+    }
+    if (event?.target.name === "noteOriginalInvoiceId") {
+      renderNoteAllocations(form, row, []);
+      for (const input of form.querySelectorAll('[name^="item-"]')) input.value = "";
+      if (!await loadNoteOriginals(form, row, noteLookups.get(row.recordId)?.page.offset || 0)) return;
+      const original = noteOriginal(input.value);
+      if (original) {
+        form.elements.registrationId.value = original.registrationId;
+        form.elements.partyId.value = original.partyId;
+        form.elements.noteOriginalNumber.value = originalNumber(original);
+        form.elements.noteOriginalDate.value = originalDate(original);
+      }
+      renderNoteAllocations(form, row, []);
+    }
+    const original = noteOriginal(input.value);
+    if (event?.target.name.startsWith("noteLine-") && row.source.noteInventory) {
+      const index = Number(event.target.closest("[data-note-allocation]").dataset.noteAllocation);
+      const sourceNames = [...new Set((isNote(row) && !row.source.noteInventory ? [] : row.source.items).map(item => item.sourceName))];
+      const mapping = form.elements[`item-${sourceNames.indexOf(row.source.items[index].sourceName)}`];
+      if (mapping) mapping.value = original?.items[Number(event.target.value)]?.itemId || "";
+    }
+  };
+  const notePayload = (form, row, data) => ({
+    direction: row.source.direction,
+    originalInvoiceId: data.get("noteOriginalInvoiceId"),
+    originalNumber: data.get("noteOriginalNumber"),
+    originalDate: data.get("noteOriginalDate"),
+    stockEffect: data.get("noteStockEffect"),
+    ...(isPurchase(row) ? { supplierDocumentConfirmed: form.elements.supplierDocumentConfirmed.checked, supplierNoteNumber: data.get("supplierNoteNumber"), supplierNoteDate: data.get("supplierNoteDate") } : {}),
+    lines: [...form.querySelectorAll("[data-note-allocation]")].map((node, index) => ({
+      ...(row.source.noteInventory ? { sourceLineIndex: index } : {}),
+      originalLineIndex: Number(node.querySelector('[data-note-field="originalLineIndex"]').value),
+      ...(!row.source.noteInventory ? { quantity: node.querySelector('[data-note-field="quantity"]').value, unitPricePaise: parseRupees(node.querySelector('[data-note-field="unitPrice"]').value), discountBps: parseRupees(node.querySelector('[data-note-field="discount"]').value) } : {})
+    }))
+  });
   const field = (name, title, attributes = "") => `<label>${esc(title)}<input name="${esc(name)}" ${attributes}></label>`;
   const enrich = () => {
     const target = section.querySelector("[data-tally-gst-enrichment]");
@@ -113,15 +241,24 @@ export async function installTallyGstReview({ root, api, esc, base, book, still,
     const checks = isPurchase(row)
       ? [["sellerGstin", "Supplier GSTIN", facts.sellerGstin, party?.gstin], ["buyerGstin", "Your business GSTIN", facts.buyerGstin, registration?.gstin]]
       : [["sellerGstin", "Seller GSTIN", facts.sellerGstin, registration?.gstin], ["buyerGstin", "Customer GSTIN", facts.buyerGstin, party?.gstin]];
-    if (isPurchase(row)) {
+    if (isPurchase(row) && !isNote(row)) {
       const source = row.source;
       for (const [key, label, sourceKey] of [["supplierInvoiceNumber", "Supplier invoice number", "sourceInvoiceNumber"], ["supplierInvoiceDate", "Supplier invoice date", "sourceInvoiceDate"], ["placeOfSupply", "Place of supply", "placeOfSupply"]]) {
         const value = originalPurchaseValue(source, key);
         checks.push([key, label, { status: value ? "supplied" : "absent", value }, form.elements[key]?.value || undefined]);
       }
     }
-    [...new Set(row.source.items.map(item => item.sourceName))].forEach((sourceName, index) => {
-      const item = state.items.find(entry => entry.id === form.elements[`item-${index}`].value);
+    if (isNote(row)) {
+      for (const [key, label, input] of [["originalNumber", "Original invoice number", "noteOriginalNumber"], ["originalDate", "Original invoice date", "noteOriginalDate"], ...(isPurchase(row) ? [["supplierNoteNumber", "Supplier note number", "supplierNoteNumber"], ["supplierNoteDate", "Supplier note date", "supplierNoteDate"]] : [])]) {
+        const value = originalNoteValue(row.source, key);
+        checks.push([key, label, { status: value ? "supplied" : "absent", value }, form.elements[input]?.value || undefined]);
+      }
+    }
+    [...new Set((isNote(row) && !row.source.noteInventory ? [] : row.source.items).map(item => item.sourceName))].forEach((sourceName, index) => {
+      const original = isNote(row) ? noteOriginal(form.elements.noteOriginalInvoiceId?.value) : null;
+      const sourceIndex = row.source.items.findIndex(item => item.sourceName === sourceName);
+      const originalIndex = form.elements[`noteLine-${sourceIndex}`]?.value;
+      const item = isNote(row) ? original?.items[originalIndex] : state.items.find(entry => entry.id === form.elements[`item-${index}`].value);
       const source = facts.items?.find(entry => entry.sourceName === sourceName);
       if (source) checks.push([`item:${sourceName}:hsnSac`, `${sourceName} HSN / SAC`, source.hsnSac, item?.hsnSac], [`item:${sourceName}:gstRateBps`, `${sourceName} GST rate`, source.gstRateBps, item?.gstRateBps], [`item:${sourceName}:supplyType`, `${sourceName} supply type`, source.supplyType, item?.kind], [`item:${sourceName}:taxability`, `${sourceName} taxability`, source.taxability, item?.supplyStatus]);
     });
@@ -164,7 +301,7 @@ export async function installTallyGstReview({ root, api, esc, base, book, still,
       const party = suggestions.party && state.parties.find(entry => entry.gstin === suggestions.party.gstin && entry[isPurchase(row) ? "supplierLedgerId" : "customerLedgerId"] === row.source.partyLedgerId);
       if (registration) { form.elements.registrationId.value = registration.id; matched++; }
       if (party) { form.elements.partyId.value = party.id; matched++; }
-      [...new Set(row.source.items.map(item => item.sourceName))].forEach((sourceName, index) => {
+      [...new Set((isNote(row) && !row.source.noteInventory ? [] : row.source.items).map(item => item.sourceName))].forEach((sourceName, index) => {
         const suggestion = suggestions.items?.find(entry => entry.sourceName === sourceName);
         if (!suggestion) return;
         const item = state.items.find(entry => (entry.stockItemId || entry.id) === suggestion.stockItemId);
@@ -176,23 +313,23 @@ export async function installTallyGstReview({ root, api, esc, base, book, still,
   };
   const rowHtml = row => {
     const source = row.source || {}, mapping = row.mapping || {}, evidence = mapping.evidence || {};
-    const purchase = isPurchase(row), type = row.type || source.type || (purchase ? "Purchase" : "Sales");
+    const purchase = isPurchase(row), note = isNote(row), type = row.type || source.type || (purchase ? "Purchase" : "Sales");
     const partyName = purchase ? "Supplier" : "Customer", tradeRole = purchase ? "purchase" : "sales";
-    const items = [...new Map((source.items || []).map(item => [item.sourceName, item])).values()];
+    const items = note && !source.noteInventory ? [] : [...new Map((source.items || []).map(item => [item.sourceName, item])).values()];
     const taxes = source.taxes || {};
     const roles = ["party", tradeRole, ...components.filter(key => taxes[`${key}Paise`] || taxes[key] || mapping.accounts?.[key])];
     const problems = [...(row.blockers || []), ...(row.discrepancies || [])];
     const active = row.status === "active";
-    const reusable = state.rows.filter(entry => entry.recordId !== row.recordId && entry.mapping?.registrationId && isPurchase(entry) === purchase);
+    const reusable = state.rows.filter(entry => entry.recordId !== row.recordId && entry.mapping?.registrationId && isPurchase(entry) === purchase && isNote(entry) === note);
     const review = mapping.purchaseReview || {};
     const supplierNumber = review.supplierInvoiceNumber || source.sourceInvoiceNumber || "";
     const supplierDate = review.supplierInvoiceDate || source.sourceInvoiceDate || "";
     const receivedDate = review.receivedDate || "";
     const placeOfSupply = review.placeOfSupply || source.placeOfSupply || "";
-    const purchaseIdentity = purchase ? `<dl class="tally-fields" data-tally-purchase-identities><dt>Internal accounting voucher</dt><dd>${esc(row.number || "Not supplied")} · ${esc(dateLabel(row.date))}</dd><dt>Original voucher</dt><dd>${esc(source.sourceVoucherNumber || row.sourceNumber || "Not supplied")} · ${esc(dateLabel(source.sourceVoucherDate || row.date))}</dd><dt>Source supplier invoice</dt><dd>${esc(originalPurchaseValue(source, "supplierInvoiceNumber") || "Not supplied")} · ${esc(dateLabel(originalPurchaseValue(source, "supplierInvoiceDate")))}</dd>${active ? `<dt>Reviewed supplier invoice</dt><dd>${esc(supplierNumber || "Not supplied")} · ${esc(dateLabel(supplierDate))}</dd><dt>Goods received</dt><dd>${esc(dateLabel(receivedDate))}</dd>` : ""}</dl>` : "";
-    const purchaseReview = purchase ? `<h3>Supplier document and receipt review</h3><div class="tally-gst-grid"><label>Supplier invoice number<input name="supplierInvoiceNumber" required maxlength="16" value="${esc(supplierNumber)}"></label><label>Supplier invoice date<input name="supplierInvoiceDate" type="date" required value="${esc(supplierDate)}"></label><label>Goods received date<input name="receivedDate" type="date" required value="${esc(receivedDate)}"></label>${select("placeOfSupply", "Reviewed place of supply", (state.states || []).map(entry => ({ ...entry, id: entry.code })), placeOfSupply, entry => `${entry.code} · ${entry.name}`)}</div><p data-tally-purchase-pos>Source place of supply: ${esc(source.placeOfSupply || "Not supplied")}. Review it against the selected business and supplier states.</p><p class="status" data-tally-purchase-itc>ITC on activation: Pending review. Use Purchase ITC review for a later credit decision.</p><label class="tally-gst-selection"><input name="purchaseReviewed" type="checkbox" value="reviewed" required${mapping.purchaseReview ? " checked" : ""}>I reviewed the supplier document, receipt date, place of supply and original postings. Credit starts pending review.</label>` : "";
-    const form = `<form data-tally-gst-mapping>${reusable.length ? `<div class="tally-gst-copy"><label>Reuse business registration, evidence and matching item mappings<select data-copy-source><option value="">Choose a saved ${purchase ? "purchase" : "sales"} mapping</option>${reusable.map(entry => `<option value="${esc(entry.recordId)}">${esc(entry.number)}</option>`).join("")}</select></label><button type="button" class="ghost" data-copy-mapping>Copy into this draft</button></div>` : ""}<div class="tally-gst-grid">${select("registrationId", purchase ? "Your business registration (buyer)" : "Seller registration", state.registrations || [], mapping.registrationId, item => `${item.gstin} · ${item.name || item.legalName}`)}${select("partyId", partyName, (state.parties || []).filter(item => !item.kind || item.kind === "both" || item.kind === (purchase ? "supplier" : "customer")), mapping.partyId, item => `${item.name} · ${item.gstin || "Unregistered"}`)}<label>Stock treatment<select name="stockMode" required><option value="source"${mapping.stockMode !== "report-only" ? " selected" : ""}>Use reviewed original stock movement</option><option value="report-only"${mapping.stockMode === "report-only" ? " selected" : ""}>GST reporting only · actual quantity unresolved</option></select></label></div>${purchaseReview}<h3>Item and HSN mappings</h3>${items.map((item, index) => `<div class="tally-gst-item"><p>${esc(item.sourceName)} · actual ${item.actualQuantity === null || item.actualQuantity === undefined ? "unresolved" : esc(item.actualQuantity + " " + item.unit)} · billed ${esc(item.quantity)} ${esc(item.unit)} · source item value ₹${money(item.valuePaise ?? item.taxablePaise)}</p>${select(`item-${index}`, "GST item · current master HSN", state.items || [], (mapping.items || []).find(entry => entry.sourceName === item.sourceName)?.itemId, entry => `${entry.name} · ${entry.hsnSac} · ${entry.unit || "Service"}`)}</div>`).join("")}<h3>Original posting accounts</h3><p class="quiet">Choose the ledgers used by the imported accounting voucher.</p><ul class="tally-gst-postings">${(source.postings || []).map(line => `<li>${esc(line.name)} · ${esc(line.dc)} ₹${money(line.paise)}</li>`).join("")}</ul><div class="tally-gst-grid">${roles.map(role => select(`account-${role}`, role === "party" ? `${partyName} ledger` : role === tradeRole ? `${purchase ? "Purchase" : "Sales"} ledger` : `${role.toUpperCase()} ${purchase ? "input tax " : ""}ledger`, state.ledgers || [], mapping.accounts?.[role])).join("")}</div><div data-tally-gst-corrections></div><div class="tally-gst-grid"><label>Supporting evidence name<input name="evidenceName" required maxlength="120" value="${esc(evidence.name || "")}"></label><label>Supporting evidence reference<input name="evidenceReference" required maxlength="500" value="${esc(evidence.reference || "")}"></label></div><p class="actions"><button type="submit">Save invoice mapping</button>${row.status === "ready" ? `<label class="tally-gst-selection"><input type="checkbox" data-tally-gst-select="${esc(row.recordId)}">Select for GST activation</label>` : ""}</p><p data-tally-gst-row-message role="status"></p></form>`;
-    return `<details class="tally-gst-invoice" data-tally-gst-record="${esc(row.recordId)}" data-tally-gst-type="${esc(type)}"><summary><span>${esc(type)} · <strong>${esc(row.number || "Unnumbered invoice")}</strong>${row.sourceNumber && row.sourceNumber !== row.number ? ` · source ${esc(row.sourceNumber)}` : ""} · ${esc(dateLabel(row.date))} · ${esc(source.partyName || `Source ${partyName.toLowerCase()}`)}</span><span>${money(source.totalPaise)} · ${esc({ blocked: "Needs mapping", ready: "Ready", active: "Active" }[row.status] || row.status)}</span></summary><p><a href="${book}/tally-source/${encodeURIComponent(row.recordId)}">Open original source record</a>${row.voucherId ? ` · <a href="${book}/v/${encodeURIComponent(type)}/${encodeURIComponent(row.voucherId)}">Open accounting voucher</a>` : ""}${purchase && active && row.voucherId ? ` · <a href="${book}/gst-document/${encodeURIComponent(row.voucherId)}">Open GST purchase</a> · <a href="${book}/gst-itc/${encodeURIComponent(row.voucherId)}">Open purchase ITC review</a>` : ""}</p>${purchaseIdentity}<p>${purchase ? "Source supplier GSTIN" : "Source customer GSTIN"}: ${esc(source.gstin || "Not supplied")} · place of supply: ${esc(source.placeOfSupply || "Not supplied")}</p>${factsHtml(row)}${problems.length ? `<ul class="tally-gst-problems">${problems.map(problem => `<li>${esc(problem.message || problem)}</li>`).join("")}</ul>` : ""}${!row.source ? '<p>Resolve the source exception before mapping this invoice.</p>' : active ? `<p class="status">GST ${purchase ? "purchase" : "invoice"} activated from the retained source.</p>${purchase ? '<p data-tally-purchase-itc>Imported with ITC pending review. Use Purchase ITC review for dated credit decisions.</p>' : ""}` : form}<details class="tally-gst-original"><summary>Source items, tax, transport and references</summary><pre>${esc(JSON.stringify(source, null, 2))}</pre></details></details>`;
+    const purchaseIdentity = purchase && !note ? `<dl class="tally-fields" data-tally-purchase-identities><dt>Internal accounting voucher</dt><dd>${esc(row.number || "Not supplied")} · ${esc(dateLabel(row.date))}</dd><dt>Original voucher</dt><dd>${esc(source.sourceVoucherNumber || row.sourceNumber || "Not supplied")} · ${esc(dateLabel(source.sourceVoucherDate || row.date))}</dd><dt>Source supplier invoice</dt><dd>${esc(originalPurchaseValue(source, "supplierInvoiceNumber") || "Not supplied")} · ${esc(dateLabel(originalPurchaseValue(source, "supplierInvoiceDate")))}</dd>${active ? `<dt>Reviewed supplier invoice</dt><dd>${esc(supplierNumber || "Not supplied")} · ${esc(dateLabel(supplierDate))}</dd><dt>Goods received</dt><dd>${esc(dateLabel(receivedDate))}</dd>` : ""}</dl>` : "";
+    const purchaseReview = purchase && !note ? `<h3>Supplier document and receipt review</h3><div class="tally-gst-grid"><label>Supplier invoice number<input name="supplierInvoiceNumber" required maxlength="16" value="${esc(supplierNumber)}"></label><label>Supplier invoice date<input name="supplierInvoiceDate" type="date" required value="${esc(supplierDate)}"></label><label>Goods received date<input name="receivedDate" type="date" required value="${esc(receivedDate)}"></label>${select("placeOfSupply", "Reviewed place of supply", (state.states || []).map(entry => ({ ...entry, id: entry.code })), placeOfSupply, entry => `${entry.code} · ${entry.name}`)}</div><p data-tally-purchase-pos>Source place of supply: ${esc(source.placeOfSupply || "Not supplied")}. Review it against the selected business and supplier states.</p><p class="status" data-tally-purchase-itc>ITC on activation: Pending review. Use Purchase ITC review for a later credit decision.</p><label class="tally-gst-selection"><input name="purchaseReviewed" type="checkbox" value="reviewed" required${mapping.purchaseReview ? " checked" : ""}>I reviewed the supplier document, receipt date, place of supply and original postings. Credit starts pending review.</label>` : "";
+    const form = `<form data-tally-gst-mapping>${reusable.length ? `<div class="tally-gst-copy"><label>Reuse business registration, evidence and matching item mappings<select data-copy-source><option value="">Choose a saved ${purchase ? "purchase" : "sales"} mapping</option>${reusable.map(entry => `<option value="${esc(entry.recordId)}">${esc(entry.number)}</option>`).join("")}</select></label><button type="button" class="ghost" data-copy-mapping>Copy into this draft</button></div>` : ""}<div class="tally-gst-grid">${select("registrationId", purchase ? "Your business registration (buyer)" : "Seller registration", state.registrations || [], mapping.registrationId, item => `${item.gstin} · ${item.name || item.legalName}`)}${select("partyId", partyName, (state.parties || []).filter(item => !item.kind || item.kind === "both" || item.kind === (purchase ? "supplier" : "customer")), mapping.partyId, item => `${item.name} · ${item.gstin || "Unregistered"}`)}<label${note ? ' hidden' : ''}>Stock treatment<select name="stockMode" required><option value="source"${mapping.stockMode !== "report-only" ? " selected" : ""}>Use reviewed original stock movement</option><option value="report-only"${mapping.stockMode === "report-only" ? " selected" : ""}>GST reporting only · actual quantity unresolved</option></select></label></div>${note && row.source ? noteHtml(row) : purchaseReview}${note ? items.map((item, index) => `<input type="hidden" name="item-${index}" value="${esc((mapping.items || []).find(entry => entry.sourceName === item.sourceName)?.itemId || "")}">`).join("") : "<h3>Item and HSN mappings</h3>" + items.map((item, index) => `<div class="tally-gst-item"><p>${esc(item.sourceName)} · actual ${item.actualQuantity === null || item.actualQuantity === undefined ? "unresolved" : esc(item.actualQuantity + " " + item.unit)} · billed ${esc(item.quantity)} ${esc(item.unit)} · source item value ₹${money(item.valuePaise ?? item.taxablePaise)}</p>${select(`item-${index}`, "GST item · current master HSN", state.items || [], (mapping.items || []).find(entry => entry.sourceName === item.sourceName)?.itemId, entry => `${entry.name} · ${entry.hsnSac} · ${entry.unit || "Service"}`)}</div>`).join("")}<h3>Original posting accounts</h3><p class="quiet">Choose the ledgers used by the imported accounting voucher.</p><ul class="tally-gst-postings">${(source.postings || []).map(line => `<li>${esc(line.name)} · ${esc(line.dc)} ₹${money(line.paise)}</li>`).join("")}</ul><div class="tally-gst-grid">${roles.map(role => select(`account-${role}`, role === "party" ? `${partyName} ledger` : role === tradeRole ? `${purchase ? "Purchase" : "Sales"} ledger` : `${role.toUpperCase()} ${purchase ? "input tax " : ""}ledger`, state.ledgers || [], mapping.accounts?.[role])).join("")}</div><div data-tally-gst-corrections></div><div class="tally-gst-grid"><label>Supporting evidence name<input name="evidenceName" required maxlength="120" value="${esc(evidence.name || "")}"></label><label>Supporting evidence reference<input name="evidenceReference" required maxlength="500" value="${esc(evidence.reference || "")}"></label></div><p class="actions"><button type="submit">Save ${note ? "note" : "invoice"} mapping</button>${row.status === "ready" ? `<label class="tally-gst-selection"><input type="checkbox" data-tally-gst-select="${esc(row.recordId)}">Select for GST activation</label>` : ""}</p><p data-tally-gst-row-message role="status"></p></form>`;
+    return `<details class="tally-gst-invoice" data-tally-gst-record="${esc(row.recordId)}" data-tally-gst-type="${esc(type)}"><summary><span>${esc(type)} · <strong>${esc(row.number || "Unnumbered invoice")}</strong>${row.sourceNumber && row.sourceNumber !== row.number ? ` · source ${esc(row.sourceNumber)}` : ""} · ${esc(dateLabel(row.date))} · ${esc(source.partyName || `Source ${partyName.toLowerCase()}`)}</span><span>${money(source.totalPaise)} · ${esc({ blocked: "Needs mapping", ready: "Ready", active: "Active" }[row.status] || row.status)}</span></summary><p><a href="${book}/tally-source/${encodeURIComponent(row.recordId)}">Open original source record</a>${row.voucherId ? ` · <a href="${book}/v/${encodeURIComponent(type)}/${encodeURIComponent(row.voucherId)}">Open accounting voucher</a>` : ""}${(purchase || note) && active && row.voucherId ? ` · <a href="${book}/gst-document/${encodeURIComponent(row.voucherId)}">Open GST ${note ? "note" : "purchase"}</a>${purchase ? ` · <a href="${book}/gst-itc/${encodeURIComponent(row.voucherId)}">Open purchase ITC review</a>` : ""}` : ""}</p>${purchaseIdentity}${note && active && row.source ? noteHtml(row, true) : ""}<p>${purchase ? "Source supplier GSTIN" : "Source customer GSTIN"}: ${esc(source.gstin || "Not supplied")} · place of supply: ${esc(source.placeOfSupply || "Not supplied")}</p>${factsHtml(row)}${problems.length ? `<ul class="tally-gst-problems">${problems.map(problem => `<li>${esc(problem.message || problem)}</li>`).join("")}</ul>` : ""}${!row.source ? '<p>Resolve the source exception before mapping this invoice.</p>' : active ? `<p class="status">GST ${note ? "note" : purchase ? "purchase" : "invoice"} activated from the retained source.</p>${purchase ? `<p data-tally-purchase-itc>${note ? "Use Purchase ITC review for the linked note adjustment. Activation does not claim new input credit." : "Imported with ITC pending review. Use Purchase ITC review for dated credit decisions."}</p>` : ""}` : form}<details class="tally-gst-original"><summary>Source items, tax, transport and references</summary><pre>${esc(JSON.stringify(source, null, 2))}</pre></details></details>`;
   };
   const updatePurchaseContext = (form, row) => {
     const target = form.querySelector("[data-tally-purchase-pos]");
@@ -212,16 +349,46 @@ export async function installTallyGstReview({ root, api, esc, base, book, still,
       const result = await api(`${base}/gst?${query}`);
       if (!current() || request !== generation) return;
       state = result;
+      const visibleRecords = new Set((state.rows || []).map(row => row.recordId));
+      for (const id of noteLookups.keys()) if (!visibleRecords.has(id)) noteLookups.delete(id);
       const summary = state.summary;
       enrich();
       section.querySelector("[data-tally-gst-summary]").textContent = `${summary.sourceInvoices} source invoices · ${summary.active} active · ${summary.ready} ready · ${summary.blocked} need review · source item value ₹${formatINR(summary.sourceItemValuePaise ?? summary.taxablePaise ?? 0)} · classified taxable ₹${formatINR(summary.taxablePaise || 0)} · tax ₹${formatINR(summary.taxPaise || 0)}`;
       section.querySelector("[data-tally-gst-rows]").innerHTML = (state.rows || []).map(rowHtml).join("") || '<p>No source invoices match this search.</p>';
       for (const form of section.querySelectorAll("[data-tally-gst-mapping]")) {
-        form.addEventListener("input", event => {
+        const formRow = state.rows.find(row => row.recordId === form.closest("[data-tally-gst-record]").dataset.tallyGstRecord);
+        if (isNote(formRow)) {
+          const review = formRow.mapping?.noteReview;
+          preserveNoteChoice(form, review?.originalInvoiceId, review ? `${review.originalNumber} · ${dateLabel(review.originalDate)}` : "");
+          renderNoteAllocations(form, formRow, formRow.mapping?.noteReview?.lines || []);
+          const note = form.closest("[data-tally-gst-record]");
+          note.addEventListener("toggle", event => { if (event.target === note && note.open) loadNoteOriginals(form, formRow, noteLookups.get(formRow.recordId)?.page.offset || 0); });
+          form.querySelector("[data-search-note-originals]").addEventListener("click", () => loadNoteOriginals(form, formRow));
+          form.elements.noteOriginalSearch.addEventListener("keydown", event => {
+            if (event.key === "Enter") { event.preventDefault(); if (!busy && form.dataset.originalLoading !== "true") loadNoteOriginals(form, formRow); }
+          });
+          form.querySelector("[data-previous-note-originals]").addEventListener("click", () => {
+            const page = noteLookups.get(formRow.recordId)?.page;
+            if (page) loadNoteOriginals(form, formRow, Math.max(0, page.offset - page.limit));
+          });
+          form.querySelector("[data-next-note-originals]").addEventListener("click", () => {
+            const page = noteLookups.get(formRow.recordId)?.page;
+            if (page) loadNoteOriginals(form, formRow, page.offset + page.limit);
+          });
+          form.querySelector("[data-add-note-allocation]")?.addEventListener("click", () => {
+            const lines = [...form.querySelectorAll("[data-note-allocation]")].map(node => Object.fromEntries([...node.querySelectorAll("input,select")].map(input => [input.dataset.noteField, input.value])));
+            lines.push({}); renderNoteAllocations(form, formRow, lines);
+            form.elements.noteStockEffect.dispatchEvent(new Event("input", { bubbles: true }));
+          });
+        }
+        form.addEventListener("input", async event => {
           if (event.target.matches("[data-tally-gst-select]")) return;
-          if (["registrationId", "partyId"].includes(event.target.name) || event.target.name.startsWith("item-") || event.target.name.startsWith("sourceChoice:") || event.target.name.startsWith("supplierInvoice") || event.target.name === "placeOfSupply") renderCorrections(form, state.rows.find(row => row.recordId === form.closest("[data-tally-gst-record]").dataset.tallyGstRecord));
+          await updateNoteContext(form, formRow, event);
+          if (!current() || !form.isConnected) return;
+          if (["registrationId", "partyId"].includes(event.target.name) || event.target.name.startsWith("item-") || event.target.name.startsWith("sourceChoice:") || event.target.name.startsWith("supplierInvoice") || event.target.name === "placeOfSupply" || event.target.name.startsWith("note") || event.target.name.startsWith("supplierNote")) renderCorrections(form, state.rows.find(row => row.recordId === form.closest("[data-tally-gst-record]").dataset.tallyGstRecord));
           if (event.target.name.startsWith("sourceChoice:")) form.elements[event.target.name]?.focus();
           if (form.elements.purchaseReviewed && event.target.name !== "purchaseReviewed") form.elements.purchaseReviewed.checked = false;
+          if (form.elements.noteReviewed && event.target.name !== "noteReviewed") form.elements.noteReviewed.checked = false;
           updatePurchaseContext(form, state.rows.find(row => row.recordId === form.closest("[data-tally-gst-record]").dataset.tallyGstRecord));
           drafts.set(form.closest("[data-tally-gst-record]").dataset.tallyGstRecord, Object.fromEntries(new FormData(form)));
           delete form.dataset.requestId;
@@ -232,11 +399,21 @@ export async function installTallyGstReview({ root, api, esc, base, book, still,
         renderCorrections(form, state.rows.find(row => row.recordId === form.closest("[data-tally-gst-record]").dataset.tallyGstRecord));
         const draft = drafts.get(form.closest("[data-tally-gst-record]").dataset.tallyGstRecord);
         if (draft) {
+          if (isNote(formRow)) {
+            preserveNoteChoice(form, draft.noteOriginalInvoiceId, `${draft.noteOriginalNumber || "Selected original"} · ${dateLabel(draft.noteOriginalDate)}`);
+            const lines = Object.keys(draft).filter(key => /^noteLine-\d+$/.test(key)).sort((a, b) => Number(a.split("-")[1]) - Number(b.split("-")[1])).map(key => {
+              const index = key.split("-")[1];
+              return { originalLineIndex: draft[key], quantity: draft[`noteQuantity-${index}`], unitPrice: draft[`notePrice-${index}`], discount: draft[`noteDiscount-${index}`] };
+            });
+            renderNoteAllocations(form, formRow, lines);
+          }
           for (const [name, value] of Object.entries(draft)) if (form.elements[name]) form.elements[name].value = value;
           for (const [name, value] of Object.entries(draft)) if (name.startsWith("sourceChoice:")) form.sourceChoices[name.slice("sourceChoice:".length)] = value;
           renderCorrections(form, state.rows.find(row => row.recordId === form.closest("[data-tally-gst-record]").dataset.tallyGstRecord));
           for (const [name, value] of Object.entries(draft)) if (form.elements[name]) form.elements[name].value = value;
           if (form.elements.purchaseReviewed) form.elements.purchaseReviewed.checked = draft.purchaseReviewed === "reviewed";
+          if (form.elements.noteReviewed) form.elements.noteReviewed.checked = draft.noteReviewed === "reviewed";
+          if (form.elements.supplierDocumentConfirmed) form.elements.supplierDocumentConfirmed.checked = draft.supplierDocumentConfirmed === "confirmed";
           const checkbox = form.querySelector("[data-tally-gst-select]");
           if (checkbox) checkbox.disabled = true;
         }
@@ -250,21 +427,21 @@ export async function installTallyGstReview({ root, api, esc, base, book, still,
           form.elements.evidenceReference.value = mapping.evidence?.reference || "";
           for (const role of [isPurchase(source) ? "purchase" : "sales", ...components]) if (form.elements[`account-${role}`]) form.elements[`account-${role}`].value = mapping.accounts?.[role] || "";
           const row = state.rows.find(entry => entry.recordId === form.closest("[data-tally-gst-record]").dataset.tallyGstRecord);
-          [...new Set(row.source.items.map(item => item.sourceName))].forEach((sourceName, index) => { form.elements[`item-${index}`].value = mapping.items?.find(item => item.sourceName === sourceName)?.itemId || ""; });
+          [...new Set((isNote(row) && !row.source.noteInventory ? [] : row.source.items).map(item => item.sourceName))].forEach((sourceName, index) => { form.elements[`item-${index}`].value = mapping.items?.find(item => item.sourceName === sourceName)?.itemId || ""; });
           form.elements.registrationId.dispatchEvent(new Event("input", { bubbles: true }));
           form.querySelector("[data-tally-gst-row-message]").textContent = "Copied the business registration, evidence, shared posting accounts and matching items. Review the party and every copied choice, then save.";
         });
         form.addEventListener("submit", async event => {
           event.preventDefault();
-          if (busy || !form.reportValidity()) return;
+          if (busy || form.dataset.originalLoading === "true" || !form.reportValidity()) return;
           const row = state.rows.find(entry => entry.recordId === form.closest("[data-tally-gst-record]").dataset.tallyGstRecord);
-          const sourceItems = [...new Set(row.source.items.map(item => item.sourceName))];
+          const sourceItems = [...new Set((isNote(row) && !row.source.noteInventory ? [] : row.source.items).map(item => item.sourceName))];
           const data = new FormData(form);
           form.dataset.requestId ||= crypto.randomUUID();
           busy = true;
           for (const control of section.querySelectorAll("button")) control.disabled = true;
           try {
-            await api(`${base}/gst/mapping`, { method: "POST", body: { requestId: form.dataset.requestId, compact: true, revision: state.revision, recordId: row.recordId, stockMode: data.get("stockMode"), ...(isPurchase(row) ? { purchaseReview: { supplierInvoiceNumber: data.get("supplierInvoiceNumber"), supplierInvoiceDate: data.get("supplierInvoiceDate"), receivedDate: data.get("receivedDate"), placeOfSupply: data.get("placeOfSupply"), itcEligibility: "pending" } } : {}), sourceCorrections: Object.fromEntries([...data.entries()].filter(([key]) => key.startsWith("sourceCorrection:")).map(([key, value]) => [key.slice("sourceCorrection:".length), value])), registrationId: data.get("registrationId"), partyId: data.get("partyId"), items: sourceItems.map((sourceName, index) => ({ sourceName, itemId: data.get(`item-${index}`) })), accounts: Object.fromEntries(["party", isPurchase(row) ? "purchase" : "sales", ...components].filter(role => data.has(`account-${role}`)).map(role => [role, data.get(`account-${role}`)])), evidence: { name: data.get("evidenceName"), reference: data.get("evidenceReference") } } });
+            await api(`${base}/gst/mapping`, { method: "POST", body: { requestId: form.dataset.requestId, compact: true, revision: state.revision, recordId: row.recordId, stockMode: data.get("stockMode"), ...(isNote(row) ? { noteReview: notePayload(form, row, data) } : isPurchase(row) ? { purchaseReview: { supplierInvoiceNumber: data.get("supplierInvoiceNumber"), supplierInvoiceDate: data.get("supplierInvoiceDate"), receivedDate: data.get("receivedDate"), placeOfSupply: data.get("placeOfSupply"), itcEligibility: "pending" } } : {}), sourceCorrections: Object.fromEntries([...data.entries()].filter(([key]) => key.startsWith("sourceCorrection:")).map(([key, value]) => [key.slice("sourceCorrection:".length), value])), registrationId: data.get("registrationId"), partyId: data.get("partyId"), items: sourceItems.map((sourceName, index) => ({ sourceName, itemId: data.get(`item-${index}`) })), accounts: Object.fromEntries(["party", isPurchase(row) ? "purchase" : "sales", ...components].filter(role => data.has(`account-${role}`)).map(role => [role, data.get(`account-${role}`)])), evidence: { name: data.get("evidenceName"), reference: data.get("evidenceReference") } } });
             if (!current()) return;
             drafts.delete(row.recordId);
             await show();

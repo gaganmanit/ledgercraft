@@ -4,7 +4,7 @@ Ledgercraft is a local accounting app for company books, Indian GST billing and 
 
 ## Download for Mac
 
-[Download Ledgercraft 1.5.0 for Apple Silicon](https://github.com/gaganmanit/ledgercraft/releases/download/v1.5.0/Ledgercraft-1.5.0-macOS-arm64.dmg). Open the image and drag Ledgercraft.app into your Applications folder. It runs on macOS 13.5 or later. The app is ad hoc signed and has no Apple notarization.
+[Download Ledgercraft 1.6.0 for Apple Silicon](https://github.com/gaganmanit/ledgercraft/releases/download/v1.6.0/Ledgercraft-1.6.0-macOS-arm64.dmg). Open the image and drag Ledgercraft.app into your Applications folder. It runs on macOS 13.5 or later. The app is ad hoc signed and has no Apple notarization.
 
 ## Get started
 
@@ -66,6 +66,11 @@ For a workbook containing billed quantities without actual quantities, physical 
 **GST from Tally** links supported domestic goods sales and purchases to their original postings and stock movements. For a purchase, select the business registration and supplier’s creditor ledger. Review the supplier invoice number and date, place of supply, actual and billed quantities, HSN, rate and original input-tax accounts. The Tally voucher number and posting date stay in the books.
 
 An activated purchase starts with ITC pending. Match the supplier’s document to GSTR-2B and record a dated decision in **Purchase ITC review**. A purchase entered in April can match its supplier’s March invoice while the ledger continues to show the April entry. An accounting-only purchase remains available in the day book even when the source supplies too little detail to create a GST invoice.
+
+For an imported credit or debit note, choose the original invoice and the affected lines. A purchase return entered as a buyer's debit note can be matched to the supplier's credit note in GSTR-2B. A financial adjustment changes values only. A physical return also records the goods movement at its linked cost.
+
+Under **GST returns → Outward credit note review**, select a domestic taxable sales credit note, enter the intended declaration date and record supporting evidence. The review controls whether the note reduces the GSTR-1 and GSTR-3B working figures. Issued documents and accounting entries remain visible in the books.
+
 
 Read [Tally compatibility](TALLY-COMPATIBILITY.md) before a migration. A native Tally company folder or proprietary backup needs an export from a compatible licensed Tally installation. The included Windows companion performs read-only exports through an open company's local HTTP service.
 

@@ -46,7 +46,7 @@ New imports save supported stock projections. Earlier imports can review activat
 
 ## GST facts and activation
 
-Imported tax ledger postings form part of the accounting book. Creating a native GST document is a separate reviewed action. The current source-GST workflow supports reconciled domestic forward-charge taxable goods sales and purchases; unsupported document types, classifications, adjustments or tax components remain blocked or retained for review.
+Imported tax ledger postings form part of the accounting book. Creating a native GST document is a separate reviewed action. The current source-GST workflow supports reconciled domestic forward-charge taxable goods sales, purchases and supported linked credit and debit notes. Other document types, classifications and tax components remain available for review.
 
 The source review shows seller and buyer GSTINs, HSN, GST rates and tax classification facts from supported invoice fields and companion masters. Provenance identifies the source record, field and effective date. Future or conflicting master facts are distinguished from facts applicable to the invoice date.
 
@@ -55,6 +55,16 @@ Select the business registration, the corresponding customer or supplier ledger,
 Activation checks item values, tax components, total consideration, party linkage and the exact accounting posting. It preserves the imported voucher and supported original stock linkage. Confirmed invoices then feed the supported GST returns and HSN workings. Search and pages limit the review to the displayed rows; unsaved drafts survive page changes and selections apply only to the displayed page.
 
 On a regular purchase the supplier GSTIN comes from the creditor and the buyer GSTIN from the company. The stock receipt carries actual quantity and cost, while invoice lines use billed quantity. The booking date, supplier invoice date and reviewed goods-received date are separate. A missing supplier reference or date requires supporting evidence before activation. Input tax remains pending until a dated review. A later match to a saved GSTR-2B file uses the supplier number and document date. Supported outward invoices keep their previous source representation.
+
+### Credit and debit notes
+
+Choose the role of the party, the verified original invoice and the affected original lines. Search the original-invoice list by number or party. Each note retains its Tally voucher type, number, posting accounts and source evidence. An outward credit note reduces the customer balance. A buyer's debit note can represent a supplier's statutory credit note, and a buyer's credit note can represent a supplier's statutory debit note. These inward cases require confirmation of the supplier's document. GSTR-2B matching uses its number and date.
+
+For a physical return, reconcile the actual and billed quantities and the original cost. For a price adjustment without a source inventory row, allocate the adjustment to original invoice lines. Both flows retain the original HSN, rate and unit. A purchase cost adjustment whose allocation to stock is unresolved remains visible as a valuation issue. A dated ITC review records the effect of an inward note on credit already claimed.
+
+The reduced output tax from a domestic taxable sales credit note needs a separate section 34 review in **GST returns**. An issued note and its original posting remain accessible while the reduction is held. The working return checks the proposed declaration against the original supply year, reported annual-return filing date and recipient evidence.
+
+The automated round trip imports synthetic source documents, exports the supported notes and originals in Tally XML and reactivates them in Ledgercraft. Unsupported allocations can be recovered from the original source archive. The public regression suite exercises Ledgercraft's importer and exporter. Licensed TallyPrime and GST Portal acceptance remain open. [Tally sales returns](https://help.tallysolutions.com/sales-return-tally/) · [Tally purchase returns](https://help.tallysolutions.com/tally-prime/purchase-process/purchase-returns-tally/) · [CGST Act, section 34](https://taxinformation.cbic.gov.in/content-page/explore-act/1000304/1000001)
 
 Source IRNs, acknowledgement numbers, e-way bill numbers and transport particulars remain source references. A repeated number or a supplied identifier does not establish an authenticated government acknowledgement. The document exchange workflow records separately imported acknowledgement evidence.
 

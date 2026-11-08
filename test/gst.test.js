@@ -319,3 +319,35 @@ test("a later-posted original purchase remains selectable when reviewing its ear
     assert.deepEqual(validateTransfer(restored).vouchers,restored.vouchers);
   });
 });
+
+test("linked notes cannot spend another HSN line's taxable value or a later debit", async () => {
+  await book(async ({store,company,input,item}) => {
+    const {item:second}=await store.saveGstMaster(company.id,"item",{name:"Other synthetic goods",kind:"goods",hsnSac:"8504",unit:"NOS",gstRateBps:500,pricePaise:20000,supplyStatus:"taxable",openingQuantity:"10"});
+    const line=(id,paise)=>({itemId:id,quantity:"1",unitPricePaise:paise});
+    const source=(await store.passGstInvoice(company.id,{...input,number:"LINK-1",date:"2026-04-01",items:[line(item.id,10000),line(second.id,20000)]})).invoice;
+    const note={...input,type:"Credit Note",direction:"sales",date:"2026-04-06",number:"N1",originalInvoiceId:source.id,stockEffect:"none",items:[line(item.id,11000)]};
+    await assert.rejects(store.passGstInvoice(company.id,note),/credit exceeds.*line|remaining taxable/i);
+    await store.passGstInvoice(company.id,{...note,type:"Debit Note",number:"D1",date:"2026-04-08",items:[line(item.id,1000)]});
+    await assert.rejects(store.passGstInvoice(company.id,note),/credit exceeds.*line|remaining taxable/i);
+    const valid=await store.passGstInvoice(company.id,{...note,date:"2026-04-09"});
+    assert.deepEqual(valid.invoice.originalLineMap,[0]);
+  });
+});
+
+test("a linked adjustment uses historical HSN and validates the selected original line at restore", async () => {
+  await book(async ({store,company,input,item}) => {
+    const original=(await store.passGstInvoice(company.id,{...input,date:"2026-04-01",number:"LINE-1",
+      items:[{itemId:item.id,quantity:"1",unitPricePaise:10000},{itemId:item.id,quantity:"1",unitPricePaise:30000}]})).invoice;
+    await store.saveGstMaster(company.id,"item",{...item,hsnSac:"8504",gstRateBps:1200});
+    const credit={...input,date:"2026-04-03",number:"LINE-C",type:"Credit Note",direction:"sales",stockEffect:"none",originalInvoiceId:original.id,
+      items:[{itemId:item.id,quantity:"1",unitPricePaise:12000}]};
+    await assert.rejects(store.passGstInvoice(company.id,{...credit,originalLineMap:[0]}),/credit exceeds.*line|remaining taxable/i);
+    const allowed=await store.passGstInvoice(company.id,{...credit,originalLineMap:[1]});
+    assert.equal(allowed.invoice.items[0].hsnSac,"8541");assert.equal(allowed.invoice.items[0].gstRateBps,1800);
+    const saved=await store.snapshot(company.id);assert.deepEqual(validateTransfer(saved).vouchers,saved.vouchers);
+    const invalidOriginal=structuredClone(saved);invalidOriginal.vouchers[0].gst.noteLinkVersion=1;
+    assert.throws(()=>validateTransfer(invalidOriginal),/only a linked note/i);
+    const corrupt=structuredClone(saved);corrupt.vouchers.at(-1).gst.originalLineMap=[0];
+    assert.throws(()=>validateTransfer(corrupt),/credit exceeds.*line|remaining taxable/i);
+  });
+});

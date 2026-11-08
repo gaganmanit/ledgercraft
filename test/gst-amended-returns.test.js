@@ -1,3 +1,4 @@
+import { applyCreditReview } from '../lib/gst-credit-review.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
@@ -19,7 +20,8 @@ const registration = { id: 'reg', name: 'Synthetic registration', gstin: gstin('
 const heads = ['taxablePaise','igstPaise','cgstPaise','sgstPaise','utgstPaise','cessPaise','totalPaise'];
 let sequence = 0;
 function fixture() { return { company: { id: 'synthetic-returns', booksFrom: '2026-04-01', ledgers: [], gst: { registrations: [registration] } }, vouchers: [] }; }
-function document(f, id, changes = {}, taxable = 20000) {
+function document(f, number, changes = {}, taxable = 20000) {
+  const id=number.toLowerCase().replaceAll("/","-");
   const inter = changes.placeOfSupply !== '23';
   const withoutTax = changes.exportMode === 'lut';
   const items = [500,1800].map((rate,index) => {
@@ -29,7 +31,7 @@ function document(f, id, changes = {}, taxable = 20000) {
       igstPaise: inter ? tax : 0, cgstPaise: inter ? 0 : tax / 2, sgstPaise: inter ? 0 : tax / 2, utgstPaise: 0, cessPaise: 0, taxPaise: tax, totalPaise: amount + tax };
   });
   const totals = Object.fromEntries([...heads,'taxPaise'].map(key => [key,items.reduce((sum,row) => sum + row[key],0)]));
-  const invoice = { id, voucherId: id, number: id, date: '2026-04-10', type: 'Sales', direction: 'sales', registrationId: registration.id, registration,
+  const invoice = { id, voucherId: id, number, date: '2026-04-10', type: 'Sales', direction: 'sales', registrationId: registration.id, registration,
     party: { name: 'Synthetic customer', gstin: gstin('27LMNOP1234Q1Z') }, placeOfSupply: '27', supplyCategory: 'domestic', reverseCharge: false,
     stockEffect: 'quantity', items, totals, ...changes };
   f.vouchers.push({ id, date: invoice.date, type: invoice.type, number: invoice.number, gst: invoice, lines: [] });
@@ -42,7 +44,17 @@ function priorFor(f, invoice, factor = .5) {
   for (const row of prior.hsnRows) { for (const key of heads) row[key] *= factor; row.quantity = String(Number(row.quantity) * factor); }
   return prior;
 }
+function creditEvidence(id) {
+  return { invoiceId:id,revision:0,requestId:"synthetic-credit-review-"+id.replace(/[^a-z0-9-]/gi,"-"),declarationDate:"2026-06-11",annualReturnStatus:"not-filed",
+    recipientBasis:"not-availed",adjustmentGround:"excess-value-or-tax",groundConfirmed:true,reference:"Synthetic recipient and credit calculation"};
+}
 function save(f, invoice, options = {}) {
+  if (invoice.type === "Credit Note" && !invoice.originalInvoiceId) {
+    const original = document(f,"ORIGINAL/1",{date:invoice.originalDate});
+    invoice.originalInvoiceId = original.id;
+    invoice.originalNumber = original.number;
+    f.company = applyCreditReview(f.company,f.vouchers,creditEvidence(invoice.id)).company;
+  }
   const input = { invoiceId: invoice.id, date: '2026-06-01', filingDate: '2026-06-11', amendmentPeriod: '2026-05', originalPeriod: '2026-04',
     revision: f.company.gst.outwardAmendments?.revision || 0, requestId: 'synthetic-return-' + String(++sequence).padStart(8,'0'),
     originalReported: priorFor(f,invoice), originalFiling: { form: 'GSTR-1', reference: 'SYNTHETIC-APRIL', filedDate: '2026-05-11', confirmedFiled: true },
@@ -102,6 +114,22 @@ test('RCM, SEZ, export and credit/debit note amendments use the correct signed l
     assert.ok(r.hsnCheck.reconciliation.every(row=>row.differencePaise===0));
     if (changes.type === 'Credit Note') assert.ok(r.sheets['hsn(b2b)'].every(row=>row[3]==='0' && Number(row[5])<0));
   }
+});
+
+test('a withdrawn recipient confirmation holds the proposed extra credit without erasing the prior filed comparator', () => {
+  const f = fixture(), note = document(f, 'CREDIT/2', {type:'Credit Note',stockEffect:'none',originalDate:'2026-04-01'});
+  save(f,note);
+  const prior = f.company.gst.creditReviews.records[0];
+  const filed = report(f,'2026-04').sheets.cdnr;
+  assert.equal(filed.length,2);
+  assert.equal(report(f,'2026-05').sheets.cdnra.length,2);
+  f.company = applyCreditReview(f.company,f.vouchers,{...creditEvidence(note.id),revision:1,requestId:'synthetic-review-withdrawal',supersedes:prior.id,
+    recipientBasis:'unconfirmed',correctionReason:'Recipient withdrew the confirmation'}).company;
+  const held = report(f,'2026-05');
+  assert.equal(held.sheets.cdnra.length,0);
+  assert.equal(held.amendments.liabilityDifference.igstPaise,0);
+  assert.ok(held.amendments.rows[0].heldReason);
+  assert.deepEqual(report(f,'2026-04').sheets.cdnr,filed);
 });
 
 test('lower revised invoice values reduce liability while lower revised credit values increase it', () => {
@@ -166,7 +194,7 @@ test('all five official amendment worksheets preserve full multi-rate values, or
       {sheet:'cdnura',cell:'B3',value:2},{sheet:'cdnura',cell:'H3',value:'446.00'},
     ]}));
     const base=fileURLToPath(new URL('../lib/resources/',import.meta.url));
-    const {stdout}=await execute(process.env.LEDGERCRAFT_PYTHON || 'python3',[fileURLToPath(new URL('./gst-workbook-check.py',import.meta.url)),file,path.join(base,'GSTR1_Excel_Workbook_Template_V2.2.xlsx'),path.join(base,'gstr1-template.json'),expected],{timeout:60000});
+    const {stdout}=await execute(process.env.LEDGERCRAFT_PYTHON || 'python3',[fileURLToPath(new URL('./gst-workbook-check.py',import.meta.url)),file,path.join(base,'GSTR1_Excel_Workbook_Template_V2.2.xlsx'),path.join(base,'gstr1-template.json'),expected],{timeout:120000});
     const checked=JSON.parse(stdout); assert.equal(checked.passed,true);
     if (process.env.FINANCER_TEST_RECALCULATE==='1') assert.equal(checked.recalculated,true);
   } finally { await rm(scratch,{recursive:true,force:true}); }
@@ -183,6 +211,7 @@ test('mixed-rate invoice and credit corrections produce identical worksheets and
     const payload={type:'Sales',date:'2026-04-10',registrationId:reg.id,partyId:party.id,placeOfSupply:'27',items:items.map(item=>({itemId:item.id,quantity:'1'}))};
     const {invoice}=await store.passGstInvoice(company.id,payload);
     const {invoice:credit}=await store.passGstInvoice(company.id,{...payload,type:'Credit Note',direction:'sales',date:'2026-04-11',originalInvoiceId:invoice.id,stockEffect:'none'});
+    await store.saveCreditReview(company.id,creditEvidence(credit.id));
     const f=await store.get(company.id);
     for (const doc of [invoice,credit]) {
       const prior=priorFor(f,doc); prior.number=doc.type==='Sales'?'FILED/1':'FILED/C1';

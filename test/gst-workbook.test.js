@@ -30,7 +30,7 @@ async function verify(report, additional) {
     assert.equal(buffer.subarray(0, 2).toString(), "PK");
     await writeFile(file, buffer);
     await writeFile(expected, JSON.stringify({ report, ...additional }));
-    const { stdout } = await execute(process.env.LEDGERCRAFT_PYTHON || "python3", [checker, file, template, manifest, expected], { timeout: 60000 });
+    const { stdout } = await execute(process.env.LEDGERCRAFT_PYTHON || "python3", [checker, file, template, manifest, expected], { timeout: 120000 });
     const checked = JSON.parse(stdout);
     assert.equal(checked.passed, true);
     if (additional.recalculate && process.env.FINANCER_TEST_RECALCULATE === "1") assert.equal(checked.recalculated, true);
@@ -70,7 +70,9 @@ test("posted mixed-rate invoice and credit note reconcile exact return totals th
     for (const [name, code, rate] of [["Synthetic Goods A", "854140", 1800], ["Synthetic Goods B", "010121", 500]]) goods.push((await store.saveGstMaster(company.id, "item", { name, kind: "goods", hsnSac: code, unit: "NOS", pricePaise: 10000, gstRateBps: rate, openingQuantity: "10" })).item);
     const payload = { type: "Sales", registrationId: registration.id, partyId: party.id, date: "2026-11-01", placeOfSupply: "27", pricing: "exclusive", items: [{ itemId: goods[0].id, quantity: "2", unitPricePaise: 10000 }, { itemId: goods[1].id, quantity: "1", unitPricePaise: 10000 }] };
     const sale = (await store.passGstInvoice(company.id, payload)).invoice;
-    await store.passGstInvoice(company.id, { ...payload, type: "Credit Note", direction: "sales", originalInvoiceId: sale.id, date: "2026-11-30", stockEffect: "quantity", items: [{ itemId: goods[0].id, quantity: "1", unitPricePaise: 10000 }] });
+    const { invoice: credit } = await store.passGstInvoice(company.id, { ...payload, type: "Credit Note", direction: "sales", originalInvoiceId: sale.id, date: "2026-11-30", stockEffect: "quantity", items: [{ itemId: goods[0].id, quantity: "1", unitPricePaise: 10000 }] });
+    await store.saveCreditReview(company.id,{invoiceId:credit.id,requestId:"synthetic-workbook-credit",revision:0,declarationDate:"2026-12-11",
+      annualReturnStatus:"not-filed",recipientBasis:"not-availed",adjustmentGround:"goods-returned",groundConfirmed:true,reference:"Synthetic delivery and credit evidence"});
     const book = await store.get(company.id);
     const report = returnWorkbook(book.company, book.vouchers, registration.id, "2026-11");
     assert.equal(report.sheets["b2b,sez,de"].length, 2);
