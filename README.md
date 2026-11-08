@@ -45,13 +45,15 @@ Ledgercraft is laid out like a ledger: a dark cover on the left carries the navi
 
 ## Daily books
 
-The company review shows cash and bank, receivables, payables, period profit and recent vouchers. Click a balance to open the corresponding statement. The sidebar opens the day book, ledgers, trial balance, profit and loss, balance sheet and group summaries.
+The company review shows cash and bank, receivables, payables, period profit and recent vouchers, followed by a needs-attention list: the GSTR-1 and GSTR-3B due dates for the latest month with GST documents, receivables more than 30 days overdue, bank statement rows without a match, purchase credit awaiting review and stock items needing review. Each line links to the screen where it is dealt with. Click a balance to open the corresponding statement. The sidebar opens the day book, ledgers, trial balance, profit and loss, balance sheet and group summaries.
 
 Create account groups and ledgers before passing entries. Ledgercraft supports Receipt, Payment, Contra, Journal, Sales, Purchase, Debit Note and Credit Note vouchers. Amounts are stored in paise, and every posted voucher must balance. Opening balances and dated vouchers feed the same reports.
 
-Use ⌘K (Ctrl+K in a browser on other systems) to find a ledger, voucher number, narration or page. On Mac, ⌘N opens a new receipt. In voucher entry, Return moves to the next field, Option+Return adds a line when the voucher balances or fills the missing amount when it does not, and ⌘Return passes a balanced entry. A row with a debit locks its credit field until the debit is cleared, and vice versa. A voucher you leave half-entered is kept as a draft and restored when you return to that voucher type.
+Use ⌘K (Ctrl+K in a browser on other systems) to find a ledger, voucher number, narration or page, and press ? for the list of keyboard shortcuts. Option with C, P, R, J, S, U, D or N opens a Contra, Payment, Receipt, Journal, Sales, Purchase, Debit Note or Credit Note. In voucher entry, type part of a ledger's name or group to pick it from a list that shows each ledger's balance, or create a missing ledger without leaving the voucher. Return moves to the next field, Option+Return adds a line when the voucher balances or fills the missing amount when it does not, and ⌘Return passes a balanced entry. A row with a debit locks its credit field until the debit is cleared, and vice versa. A voucher you leave half-entered is kept as a draft and restored when you return to that voucher type.
 
-Open a saved voucher from the day book to alter, duplicate or print it. Changes that would invalidate the posted books are rejected. Errors appear next to the form they belong to.
+Open a saved voucher from the day book to alter, duplicate or print it. Changes that would invalidate the posted books are rejected. Errors appear next to the form they belong to. Every statement has a Download CSV button that writes plain numbers with separate Dr/Cr columns for a spreadsheet, and long day books, ledgers and trial balances load 200 rows at a time while their totals cover every row.
+
+Income and expense ledgers start each financial year at nil. Earlier years' profit appears as one brought-forward row under Capital, and the balance sheet shows retained profit separately from the current year's. Every save is written durably and keeps a backup copy beside the book; a damaged file opens from that copy with a warning.
 
 ## GST billing and review
 
