@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { start } from "../server.js";
-import { needsResources, TALLY_VOUCHERS_DEFAULT_ZIP } from "./helpers/resources.mjs";
+import { needsResources, HSN_DIRECTORY, GSTR1_TEMPLATE, TALLY_VOUCHERS_DEFAULT_ZIP } from "./helpers/resources.mjs";
 
 async function sourceFile(relative) {
   const bytes = await readFile(new URL("./fixtures/" + relative, import.meta.url));
@@ -48,7 +48,8 @@ test("official general Tally workbook posts its actual purchase without manufact
   });
 });
 
-test("Tally purchase through 2B, pending stock valuation, reviewed ITC, period returns and both backups", async () => {
+test("Tally purchase through 2B, pending stock valuation, reviewed ITC, period returns and both backups", async (t) => {
+  if (!needsResources(t, HSN_DIRECTORY, GSTR1_TEMPLATE)) return;
   await withDesk(async ({ api, base, importFile }) => {
     const source = await sourceFile("tally-purchase-gst.xml");
     const imported = await importFile(source,{companyName:"Meridian Fixture Books",booksFrom:"2025-04-01"});
@@ -118,7 +119,8 @@ test("Tally purchase through 2B, pending stock valuation, reviewed ITC, period r
   });
 });
 
-test("Tally note cycle joins outward returns, supplier 2B notes, ITC dispositions and restored stock", async () => {
+test("Tally note cycle joins outward returns, supplier 2B notes, ITC dispositions and restored stock", async (t) => {
+  if (!needsResources(t, HSN_DIRECTORY, GSTR1_TEMPLATE)) return;
   await withDesk(async ({api,importFile,base}) => {
     const source=await sourceFile("tally-note-cycle.xml");
     const imported=await importFile(source,{companyName:"Meridian Fixture Books",booksFrom:"2025-04-01"});

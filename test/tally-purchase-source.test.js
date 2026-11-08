@@ -9,6 +9,7 @@ import { readTallyZip } from '../lib/tally-zip.js';
 import { parseTallyXlsx, tallyXlsxRows } from '../lib/tally-xlsx.js';
 import { workbookReferences, workbookBasis } from '../lib/tally-workbook-references.js';
 import { previewTally, restoreTallyArchive } from '../lib/tally-import.js';
+import { needsResources, TALLY_SALES_GST_ZIP } from './helpers/resources.mjs';
 
 const gstin = (state, pan = 'ABCDE1234F') => { const prefix = `${state}${pan}1Z`; return prefix + gstinCheckDigit(prefix); };
 const buyer = gstin('23'), supplier = gstin('27', 'PQRST5678L');
@@ -86,7 +87,8 @@ async function purchaseWorkbook(referenceDate = '2023-04-08T00:00:00.000Z') {
   return zip(entries);
 }
 
-test('Purchase XLSX preserves supplier reference separately, interprets its date and retains original cells', async () => {
+test('Purchase XLSX preserves supplier reference separately, interprets its date and retains original cells', async (t) => {
+  if (!needsResources(t, TALLY_SALES_GST_ZIP)) return;
   const bytes = await purchaseWorkbook(), parsed = parseTallyXlsx(bytes), records = recordsOf(parsed.tree).map(record => ({ ...record, sourceFormat: 'xlsx' }));
   assert.equal(parsed.issues.filter(issue => issue.severity === 'blocking').length, 0, JSON.stringify(parsed.issues));
   const record = records.find(row => row.type === 'VOUCHER');
@@ -105,7 +107,8 @@ test('Purchase XLSX preserves supplier reference separately, interprets its date
   assert.ok(children(record.node, 'ALLLEDGERENTRIES').every(entry => value(entry, 'ISDEEMEDPOSITIVE') === (value(entry, 'LEDGERNAME') === 'Supplier' ? 'No' : 'Yes')));
 });
 
-test('Purchase XLSX with a non-midnight reference date needs source review', async () => {
+test('Purchase XLSX with a non-midnight reference date needs source review', async (t) => {
+  if (!needsResources(t, TALLY_SALES_GST_ZIP)) return;
   const parsed = parseTallyXlsx(await purchaseWorkbook('2023-04-08T12:00:00.000Z'));
   const records = recordsOf(parsed.tree), record = records.find(row => row.type === 'VOUCHER');
   record.node.children.push({ tag: 'PARTYGSTIN', attrs: {}, text: supplier, children: [] });
@@ -114,7 +117,8 @@ test('Purchase XLSX with a non-midnight reference date needs source review', asy
   assert.ok(facts.sellerGstin.issues.some(issue => /effective date/.test(issue)));
 });
 
-test('existing v1 Sales workbook basis survives archive restore unchanged', async () => {
+test('existing v1 Sales workbook basis survives archive restore unchanged', async (t) => {
+  if (!needsResources(t, TALLY_SALES_GST_ZIP)) return;
   const bytes = await readFile(new URL('fixtures/tally-xlsx/Tally-Sales-GST-Template.zip', import.meta.url));
   const preview = previewTally([{ name: 'Tally-Sales-GST-Template.zip', base64: bytes.toString('base64') }], { companyName: 'Public existing v1 archive', booksFrom: '2023-04-01', useBilledAsActual: false });
   assert.equal(preview.canCommit, true, JSON.stringify(preview.issues));
@@ -127,7 +131,8 @@ test('existing v1 Sales workbook basis survives archive restore unchanged', asyn
 });
 
 
-test('v1 mixed workbook archive retains accounting-only Purchase without requiring GST or stock evidence', async () => {
+test('v1 mixed workbook archive retains accounting-only Purchase without requiring GST or stock evidence', async (t) => {
+  if (!needsResources(t, TALLY_SALES_GST_ZIP)) return;
   const sale = await readFile(new URL('fixtures/tally-xlsx/Tally-Sales-GST-Template.zip', import.meta.url));
   const purchase = await purchaseWorkbook();
   const preview = previewTally([{ name: 'sales.zip', base64: sale.toString('base64') }, { name: 'purchase.xlsx', base64: purchase.toString('base64') }], { companyName: 'Public v1 mixed archive', booksFrom: '2023-04-01', useBilledAsActual: false });
