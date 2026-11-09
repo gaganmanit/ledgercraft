@@ -4,6 +4,9 @@ All notable changes to Ledgercraft are recorded here. Dates are dd-mm-yyyy.
 
 ## 1.7.0 — 09-11-2026
 
+### Mac
+- The disk image opens as a drag-to-install window with an Applications shortcut and a backdrop arrow.
+
 ### Interface
 - New design system (`public/ledgercraft.css`, `docs/DESIGN.md`): a dark cloth cover for navigation with a red spine, white ruled pages, a red hairline on every money column and a double rule under totals. IBM Plex Sans and Plex Mono replace the previous serif and sans faces; bundled fonts shrink from 1.7 MB of TTF to about 360 KB of WOFF2.
 - Light and dark pages. The choice follows the system until you pick one with the button at the foot of the cover.

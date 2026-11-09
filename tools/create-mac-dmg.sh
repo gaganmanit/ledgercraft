@@ -83,6 +83,64 @@ def normalize_dates(directory):
     for file in entries:
         os.utime(file, (epoch, epoch), follow_symlinks=False)
 
+def background_image(file, width=660, height=420):
+    """A 2x drag-to-install backdrop in the app's palette: app on the left, Applications on the right, an arrow between.
+    Drawn with Pillow when it is installed; otherwise the image has no backdrop and Finder shows a plain window."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        return False
+    scale = 2
+    image = Image.new("RGB", (width * scale, height * scale), "#e6e8e6")
+    draw = ImageDraw.Draw(image)
+    sheet = (28 * scale, 28 * scale, (width - 28) * scale, (height - 28) * scale)
+    draw.rounded_rectangle(sheet, radius=6 * scale, fill="#fcfcfa", outline="#d5dee9", width=scale)
+    draw.rectangle((sheet[0], sheet[1], sheet[0] + 3 * scale, sheet[3]), fill="#a51d2d")
+    def font(size):
+        for candidate in ("/System/Library/Fonts/SFNS.ttf", "/System/Library/Fonts/Helvetica.ttc", "/System/Library/Fonts/Supplemental/Arial.ttf"):
+            try:
+                return ImageFont.truetype(candidate, size * scale)
+            except OSError:
+                continue
+        return ImageFont.load_default()
+    arrow_y = 205 * scale
+    x0, x1 = 250 * scale, 410 * scale
+    draw.line((x0, arrow_y, x1 - 10 * scale, arrow_y), fill="#4f565c", width=3 * scale)
+    draw.polygon([(x1, arrow_y), (x1 - 18 * scale, arrow_y - 11 * scale), (x1 - 18 * scale, arrow_y + 11 * scale)], fill="#4f565c")
+    title = "Drag Ledgercraft into Applications"
+    draw.text((width * scale / 2, 348 * scale), title, fill="#1c1f22", font=font(17), anchor="mm")
+    draw.text((width * scale / 2, 376 * scale), "Then open it from Launchpad or Applications. Your books stay on this Mac.", fill="#4f565c", font=font(12), anchor="mm")
+    image.save(file, "PNG", dpi=(72 * scale, 72 * scale))
+    return True
+
+def finder_layout(mount, volume_name, background):
+    """Arrange the mounted writable image like a drag-to-install window. Finder stores the result in .DS_Store."""
+    bg = 'set background picture of theViewOptions to file ".background:background.png"' if background else ""
+    script = f'''
+        tell application "Finder"
+            tell disk "{volume_name}"
+                open
+                set current view of container window to icon view
+                set toolbar visible of container window to false
+                set statusbar visible of container window to false
+                set the bounds of container window to {{400, 180, 1060, 600}}
+                set theViewOptions to the icon view options of container window
+                set arrangement of theViewOptions to not arranged
+                set icon size of theViewOptions to 128
+                set text size of theViewOptions to 13
+                {bg}
+                set position of item "Ledgercraft.app" of container window to {{165, 205}}
+                set position of item "Applications" of container window to {{495, 205}}
+                close
+                open
+                update without registering applications
+                delay 2
+                close
+            end tell
+        end tell
+    '''
+    run(["/usr/bin/osascript", "-e", script], capture_output=True)
+
 def privacy_check(app, check_attributes=True):
     if any(file.is_symlink() for file in app.rglob("*")):
         raise ValueError("Unexpected symbolic link in public bundle")
@@ -176,12 +234,33 @@ try:
         stage = work / "image-root"
         stage.mkdir()
         shutil.move(candidate, stage / "Ledgercraft.app")
+        # A drag-to-install window: the app, a shortcut to /Applications and a backdrop with an arrow.
+        os.symlink("/Applications", stage / "Applications")
+        backdrop_dir = stage / ".background"
+        backdrop_dir.mkdir()
+        has_backdrop = background_image(backdrop_dir / "background.png")
+        if not has_backdrop:
+            shutil.rmtree(backdrop_dir)
+            print("Pillow is not installed; the image has no backdrop picture", flush=True)
         normalize_dates(stage)
-        writable = work / "release-master.iso"
+        volume_name = "Ledgercraft " + version
+        writable = work / "release-master.dmg"
         print("Creating release disk image", flush=True)
-        # UDF preserves executable modes without synthesizing FinderInfo
-        # attributes that invalidate signed resources. Avoid UDF symlink issues.
-        run(["/usr/bin/hdiutil", "makehybrid", "-udf", "-udf-volume-name", "Ledgercraft " + version, "-o", writable, stage])
+        # HFS+ keeps executable modes and lets Finder store the window layout and the Applications
+        # shortcut. The app bundle itself carries no Finder metadata (privacy_check verifies that).
+        run(["/usr/bin/hdiutil", "create", "-srcfolder", stage, "-volname", volume_name, "-fs", "HFS+",
+             "-fsargs", "-c c=64,a=16,e=16", "-format", "UDRW", "-o", writable], capture_output=True)
+        layout_mount = run(["/usr/bin/hdiutil", "attach", "-readwrite", "-noverify", "-noautoopen", writable], capture_output=True, text=True).stdout
+        layout_path = next(line.split("\t")[-1].strip() for line in layout_mount.splitlines() if "/Volumes/" in line)
+        mounted = layout_path
+        try:
+            finder_layout(layout_path, volume_name, has_backdrop)
+            if has_backdrop:
+                run(["/usr/bin/SetFile", "-a", "V", Path(layout_path) / ".background"], capture_output=True)
+            run(["/bin/sync"])
+        finally:
+            run(["/usr/bin/hdiutil", "detach", layout_path], capture_output=True)
+            mounted = None
         mount = work / "image-mount"
         mount.mkdir()
         with writable.open("rb") as image:
