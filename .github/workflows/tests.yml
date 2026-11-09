@@ -18,6 +18,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the workbook check dependency
+        run: python3 -m pip install --quiet -r requirements-test.txt
       - name: Restore public reference resources
         id: resources
         uses: actions/cache@v4

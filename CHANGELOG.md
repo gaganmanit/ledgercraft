@@ -2,7 +2,7 @@
 
 All notable changes to Ledgercraft are recorded here. Dates are dd-mm-yyyy.
 
-## Unreleased
+## 1.7.0 — 09-11-2026
 
 ### Interface
 - New design system (`public/ledgercraft.css`, `docs/DESIGN.md`): a dark cloth cover for navigation with a red spine, white ruled pages, a red hairline on every money column and a double rule under totals. IBM Plex Sans and Plex Mono replace the previous serif and sans faces; bundled fonts shrink from 1.7 MB of TTF to about 360 KB of WOFF2.
