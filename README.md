@@ -1,5 +1,7 @@
 # Ledgercraft
 
+[![Tests](https://github.com/gaganmanit/ledgercraft/actions/workflows/tests.yml/badge.svg)](https://github.com/gaganmanit/ledgercraft/actions/workflows/tests.yml)
+
 Ledgercraft is a local accounting app for company books, Indian GST billing and Tally data migration. It keeps ledgers, double-entry vouchers, stock movements and supporting source files together. A browser interface and a native macOS wrapper use the same accounting engine.
 
 ## Download for Mac
@@ -121,7 +123,7 @@ python3 -m pip install -r requirements-test.txt
 npm test
 ```
 
-The suite covers accounting, storage, reconciliation, stock, GST preparation, migration and backup restoration. Tests that need the downloaded GSTN resources or the public Tally fixtures skip, naming the missing file, when `npm run setup` has not been run. A ready-to-enable GitHub Actions workflow at [tools/ci/github-tests.yml](tools/ci/github-tests.yml) runs the suite on macOS and Linux for every push; copy it to `.github/workflows/` from a checkout whose token has the `workflow` scope. Test books are synthetic or come from documented public examples. The fixture READMEs and source manifests describe their origins. Optional integration checks use PowerShell, LibreOffice or macOS WebKit when their prerequisites are available; the core test run does not prove a licensed Tally round trip or portal acceptance.
+The suite covers accounting, storage, reconciliation, stock, GST preparation, migration and backup restoration. Tests that need the downloaded GSTN resources or the public Tally fixtures skip, naming the missing file, when `npm run setup` has not been run. The [tests workflow](.github/workflows/tests.yml) runs the suite on macOS and Linux for every push and pull request. Test books are synthetic or come from documented public examples. The fixture READMEs and source manifests describe their origins. Optional integration checks use PowerShell, LibreOffice or macOS WebKit when their prerequisites are available; the core test run does not prove a licensed Tally round trip or portal acceptance.
 
 The project uses JavaScript modules and Node's built-in test runner. The main directories are:
 

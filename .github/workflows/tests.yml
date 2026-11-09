@@ -1,5 +1,3 @@
-# Copy this file to .github/workflows/tests.yml to run the suite on every push.
-# Pushing files under .github/workflows needs a token with the `workflow` scope (gh auth refresh -s workflow).
 name: Tests
 
 on:

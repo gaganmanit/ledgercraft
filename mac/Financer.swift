@@ -15,6 +15,8 @@ final class FinancerApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     /// Pages may use the local API only with this secret. A test harness may supply it through the environment.
     private let sessionToken = ProcessInfo.processInfo.environment["LEDGERCRAFT_TOKEN"] ?? UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     private var baseURL = URL(string: "http://127.0.0.1:4173")!
+    /// The isolated launch test uses a given port, a temporary workstation and no persistent WebKit data.
+    private var testMode = false
     private var home = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Ledgercraft", isDirectory: true)
     private let session: URLSession = {
@@ -36,8 +38,13 @@ final class FinancerApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                   let files = try? FileManager.default.contentsOfDirectory(atPath: directory.path), files.isEmpty else { exit(2) }
             home = directory
             baseURL = URL(string: "http://127.0.0.1:\(port)")!
+            testMode = true
+        } else {
+            // Another local program may hold 4173 (a browser-run Ledgercraft, a dev server). Never fail on that:
+            // keep 4173 when it is free, otherwise take any free loopback port.
+            baseURL = URL(string: "http://127.0.0.1:\(Self.freePort(preferring: 4173))")!
         }
-        NSApp.setActivationPolicy(baseURL.port == 4173 ? .regular : .accessory)
+        NSApp.setActivationPolicy(testMode ? .accessory : .regular)
         createMenu()
         createWindow()
         launchServer()
@@ -45,7 +52,7 @@ final class FinancerApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     private func createWindow() {
         let configuration = WKWebViewConfiguration()
-        if baseURL.port != 4173 { configuration.websiteDataStore = .nonPersistent() }
+        if testMode { configuration.websiteDataStore = .nonPersistent() }
         configuration.applicationNameForUserAgent = "FinancerDesktop/1.0"
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
         configuration.userContentController.add(self, name: "financerPrint")
@@ -68,7 +75,7 @@ final class FinancerApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         window.contentView = webView
         window.setFrameAutosaveName("LedgercraftMainWindow")
         if !window.setFrameUsingName("LedgercraftMainWindow") { window.center() }
-        if baseURL.port == 4173 {
+        if !testMode {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         }
@@ -83,7 +90,7 @@ final class FinancerApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             <p style="font-size:15px;color:#4f565c;margin:0">Opening your books…</p></body></html>
             """
         webView.loadHTMLString(html, baseURL: nil)
-        if baseURL.port != 4173 {
+        if testMode {
             // Only the explicit isolated launch test records native UI state.
             let menu = NSApp.mainMenu?.items.first?.submenu
             let branding: [String: Any] = ["windowTitle": window.title,
@@ -165,7 +172,7 @@ final class FinancerApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                     return
                 }
                 if let response = response as? HTTPURLResponse, response.statusCode < 500 {
-                    self.showFailure("Port 4173 is already in use by another local service. Close that service, then reopen Ledgercraft.")
+                    self.showFailure("Another program answered on port \(self.baseURL.port ?? 0) while Ledgercraft was starting. Reopen Ledgercraft and it will choose a free port.")
                     self.stopServer()
                     return
                 }
@@ -177,6 +184,32 @@ final class FinancerApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self.checkReadiness(deadline: deadline) }
             }
         }.resume()
+    }
+
+    /// Returns `preferred` when nothing listens on it, otherwise a free ephemeral loopback port.
+    private static func freePort(preferring preferred: UInt16) -> UInt16 {
+        func bind(_ port: UInt16) -> UInt16? {
+            let socketDescriptor = socket(AF_INET, SOCK_STREAM, 0)
+            guard socketDescriptor >= 0 else { return nil }
+            defer { close(socketDescriptor) }
+            var address = sockaddr_in()
+            address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+            address.sin_family = sa_family_t(AF_INET)
+            address.sin_port = port.bigEndian
+            address.sin_addr.s_addr = inet_addr("127.0.0.1")
+            let bound = withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(socketDescriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+            }
+            guard bound == 0 else { return nil }
+            var assigned = sockaddr_in()
+            var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+            let named = withUnsafeMutablePointer(to: &assigned) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(socketDescriptor, $0, &length) }
+            }
+            guard named == 0 else { return nil }
+            return UInt16(bigEndian: assigned.sin_port)
+        }
+        return bind(preferred) ?? bind(0) ?? preferred
     }
 
     private func showFailure(_ message: String) {

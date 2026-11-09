@@ -42,6 +42,8 @@ All notable changes to Ledgercraft are recorded here. Dates are dd-mm-yyyy.
 - Reverse-charge reversals marked time-barred stay in the 4(C) working. Rates outside the notified slabs are refused unless an item is marked as a special rate. Services report UQC NA. Invoices may carry a round-off of up to 50 paise to a Round Off ledger.
 
 ### Stock, Tally and bank
+- Tally service ledgers and mixed goods-and-services invoices import with each service's own amount, SAC and dated rate; a lump-sum service carries no quantity. Purchase ITC review binds each claimed service line to a dated receipt, so a goods-only claim can proceed while a service is pending. The Tally GST review screen gained supplier and service master forms. (Merged from the parallel Codex branch.)
+- The Mac app no longer fails when port 4173 is taken by another program: it keeps 4173 when free and otherwise opens on another free loopback port.
 - Stock opening values follow Tally's sign convention on import and export, so real TallyPrime exports project into active stock.
 - Within a day, receipts are processed before issues. A shortage filled later by a priced receipt no longer blanks the year's closing stock, cost of goods sold and gross profit.
 - A godown transfer short of stock becomes an item issue instead of aborting the stock replay.
@@ -57,7 +59,7 @@ All notable changes to Ledgercraft are recorded here. Dates are dd-mm-yyyy.
 - `/api/health` reports the app name, version and whether the GSTN reference resources are installed; the server warns at start when they are missing.
 - Stricter response headers: no inline styles in the content security policy, no referrer, same-origin resource and opener policies. Same-site fetches from other local ports are refused like cross-site ones.
 - The browser runner picks the next free port when 4173 is busy and prints the one it chose; the Mac app keeps its fixed port. Shutdown no longer waits forever on open connections.
-- Tests that need downloaded resources skip with the file name instead of failing; a GitHub Actions workflow (tools/ci/github-tests.yml, to be enabled) runs the suite on macOS and Linux.
+- Tests that need downloaded resources skip with the file name instead of failing; a GitHub Actions workflow runs the suite on macOS and Linux for every push.
 - `lib/money.js` gains `numberInWords` and `rupeesInWords` (crore, lakh, thousand) for printed documents.
 
 ## 1.4.0 — 08-11-2026
