@@ -26,7 +26,7 @@ import { createStore } from "./lib/store.js";
 import { auditScope } from "./lib/audit-log.js";
 import { createUserDirectory, roleRefusal, USER_COOKIE, USER_MESSAGES } from "./lib/users.js";
 import { handleSessionRoute } from "./lib/session-routes.js";
-import { balanceSheet, dayBook, ledgerReport, profitAndLoss, trialBalance } from "./lib/engine.js";
+import { balanceSheet, profitAndLoss, trialBalance } from "./lib/engine.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(root, "public");
@@ -369,44 +369,13 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
           send(res, 200, await store.snapshot(id));
           return;
         }
-        if (["groups", "ledgers"].includes(parts[3]) && parts[4] && parts.length === 5) {
-          const masterId = decodeURIComponent(parts[4]);
-          if (req.method === "PUT") {
-            const method = parts[3] === "groups" ? "updateGroup" : "updateLedger";
-            send(res, 200, await store[method](id, masterId, await readBody(req)));
-            return;
-          }
-          if (req.method === "DELETE") {
-            const method = parts[3] === "groups" ? "removeGroup" : "removeLedger";
-            send(res, 200, await store[method](id, masterId, (await readBody(req)).expected));
-            return;
-          }
-        }
-        if (parts[3] === "groups" && req.method === "POST") {
-          send(res, 201, await store.addGroup(id, await readBody(req)));
-          return;
-        }
-        if (parts[3] === "ledgers" && req.method === "POST") {
-          send(res, 201, await store.addLedger(id, await readBody(req)));
-          return;
-        }
-        if (parts[3] === "vouchers" && req.method === "POST" && parts.length === 4) {
-          send(res, 201, await store.passVoucher(id, await readBody(req)));
-          return;
-        }
+        // Group, ledger and voucher writes, the day book and the ledger report are answered by
+        // lib/book-routes.js above; the routes below are the reads it does not cover.
         if (parts[3] === "vouchers" && parts.length === 5 && req.method === "GET") {
           const { company, vouchers, nextNumbers } = await store.snapshot(id);
           const voucher = vouchers.find(v => v.id === decodeURIComponent(parts[4]));
           if (!voucher) throw new Error("That voucher is not in this company");
           return send(res, 200, { company, voucher, nextNumbers });
-        }
-        if (parts[3] === "vouchers" && parts[4] && req.method === "PUT") {
-          send(res, 200, await store.passVoucher(id, await readBody(req), decodeURIComponent(parts[4])));
-          return;
-        }
-        if (parts[3] === "vouchers" && parts[4] && req.method === "DELETE") {
-          send(res, 200, await store.removeVoucher(id, decodeURIComponent(parts[4]), (await readBody(req)).expected));
-          return;
         }
         if (parts[3] === "reports" && req.method === "GET") {
           const { company, vouchers } = await store.snapshot(id);
@@ -421,14 +390,6 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
           }
           if (parts[4] === "balance-sheet") {
             send(res, 200, balanceSheet(company, vouchers, to));
-            return;
-          }
-          if (parts[4] === "daybook") {
-            send(res, 200, { from, to, rows: dayBook(company, vouchers, from, to) });
-            return;
-          }
-          if (parts[4] === "ledger" && parts[5]) {
-            send(res, 200, ledgerReport(company, vouchers, decodeURIComponent(parts[5]), from, to));
             return;
           }
         }
