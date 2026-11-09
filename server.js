@@ -24,8 +24,8 @@ import { handleBookRoute } from "./lib/book-routes.js";
 import { handleStatementRoute } from "./lib/statement-routes.js";
 import { createStore } from "./lib/store.js";
 import { auditScope } from "./lib/audit-log.js";
-import { createUserDirectory, roleRefusal, USER_COOKIE, USER_MESSAGES } from "./lib/users.js";
-import { handleSessionRoute } from "./lib/session-routes.js";
+import { appendCookie, createUserDirectory, roleRefusal, USER_MESSAGES, userCookie } from "./lib/users.js";
+import { handleSessionRoute, requestSession } from "./lib/session-routes.js";
 import { balanceSheet, profitAndLoss, trialBalance } from "./lib/engine.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -118,7 +118,22 @@ async function resourceStatus() {
   return status;
 }
 
-const SESSION_COOKIE = "ledgercraft_session";
+/** Base name of the start-link cookie; the cookie itself is scoped by port, see sessionCookieName. */
+export const SESSION_COOKIE = "ledgercraft_session";
+const SESSION_COOKIE_SECONDS = 60 * 60 * 24 * 90;
+
+/**
+ * The start-link cookie for the server listening on `port`. Browsers scope cookies by host,
+ * not by port, so two Ledgercraft servers on 127.0.0.1 (the Mac app and `npm start`, or two
+ * books) would otherwise overwrite each other's cookie and sign each other out.
+ */
+export function sessionCookieName(port) {
+  return `${SESSION_COOKIE}_${port}`;
+}
+
+function sessionCookie(port, token) {
+  return `${sessionCookieName(port)}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_COOKIE_SECONDS}`;
+}
 
 function cookieValue(req, name) {
   const header = req.headers.cookie;
@@ -155,7 +170,8 @@ export async function workstationToken(home, provided) {
  * Second gate for a Mac shared by several people, run right after the start-link token
  * check. While no users are set up it lets everything through (the token holder is the
  * owner). Once users exist, /api/ requests other than /api/health and /api/session need
- * the signed-in user cookie (ledgercraft_user), and the user's role must allow the
+ * the signed-in user cookie (ledgercraft_user_<port>, context.port being the local port
+ * the request arrived on), and the user's role must allow the
  * request (lib/users.js roleRefusal). A live session is renewed for another 12 hours and
  * becomes the actor of the request: context.actor, and the edit-log scope, so every entry
  * written while answering it names the user. Returns true when it has answered.
@@ -165,11 +181,11 @@ export function sessionGate(req, res, context) {
   context.actor = null;
   if (!users?.hasUsers() || parts[0] !== "api") return false;
   if (parts.length === 2 && (parts[1] === "health" || parts[1] === "session")) return false;
-  const current = users.session(cookieValue(req, USER_COOKIE));
+  const current = requestSession(req, users, context.port);
   if (!current) { send(res, 401, { error: USER_MESSAGES.signIn, signIn: true }); return true; }
   const refusal = roleRefusal(current.user.role, req.method, parts);
   if (refusal) { send(res, 403, { error: refusal }); return true; }
-  res.setHeader("set-cookie", users.renew(current).cookie);
+  appendCookie(res, userCookie(context.port, users.renew(current).value));
   context.actor = current.user;
   const scope = auditScope.getStore();
   if (scope) scope.actor = current.user;
@@ -255,7 +271,15 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
       const parts = url.pathname.split("/").filter(Boolean);
       if (token) {
         const bearer = /^Bearer\s+(\S+)$/.exec(req.headers.authorization || "")?.[1];
-        const authorised = sameToken(cookieValue(req, SESSION_COOKIE), token) || sameToken(bearer, token);
+        // Compatibility for this release only: a browser opened before cookies were scoped by
+        // port still holds the unscoped SESSION_COOKIE. Accept it when the scoped cookie is
+        // absent and set the scoped cookie in this response, so it is needed once. Another
+        // server's token never matches, so a cookie left by another port opens nothing.
+        // Drop the fallback in the release after.
+        const scoped = cookieValue(req, sessionCookieName(port));
+        const legacy = scoped === null && sameToken(cookieValue(req, SESSION_COOKIE), token);
+        const authorised = sameToken(scoped, token) || legacy || sameToken(bearer, token);
+        if (legacy) appendCookie(res, sessionCookie(port, token));
         if (url.pathname === "/" && url.searchParams.has("token")) {
           if (!sameToken(url.searchParams.get("token"), token)) {
             res.writeHead(403, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
@@ -264,7 +288,7 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
           }
           // Serve the app directly rather than redirecting: a cookie set on a redirect is not always
           // replayed on the follow-up request when the navigation started from another app or site.
-          res.setHeader("set-cookie", `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${60 * 60 * 24 * 90}`);
+          appendCookie(res, sessionCookie(port, token));
           res.setHeader("cache-control", "no-store");
           const html = await readFile(path.join(publicDir, "index.html"));
           res.writeHead(200, { "content-type": MIME[".html"], "content-length": html.length });
@@ -282,7 +306,7 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
           }
         }
       }
-      const gate = { parts, users };
+      const gate = { parts, users, port };
       if (sessionGate(req, res, gate)) return;
       if ((req.method === "GET" || req.method === "HEAD") && await serveStatic(req, res, url.pathname)) return;
 
@@ -328,7 +352,7 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
         res.end(raw);
         return;
       }
-      const context = { req, res, url, parts, store, dataDir, readBody, send, users, actor: gate.actor };
+      const context = { req, res, url, parts, store, dataDir, readBody, send, users, actor: gate.actor, port };
       if (await handleImsRoute(context)) return;
       if (await handleSessionRoute(context) || await handleAmendmentRoute(context) || await handleReconciliationRoute(context) || await handleGstExchangeRoute(context) || await handleStockRoute(context) || await handleRcmRoute(context) || await handleItcRoute(context) || await handleGstRoute(context) || await handleTallyRoute(context) || await handleReturnRoute(context) || await handleStatementRoute(context)) return;
       if (await handleBookRoute(context)) return;

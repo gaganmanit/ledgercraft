@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { openWorkstation } from "../lib/workstation.js";
-import { createUserDirectory, hashPassphrase, roleRefusal, SESSION_SECONDS, USER_MESSAGES, verifyPassphrase } from "../lib/users.js";
+import { createUserDirectory, hashPassphrase, roleRefusal, SESSION_SECONDS, USER_MESSAGES, userCookie, verifyPassphrase } from "../lib/users.js";
 
 async function withDirectory(run, options = {}) {
   const home = await mkdtemp(path.join(os.tmpdir(), "ledgercraft-users-"));
@@ -58,7 +58,7 @@ test("the first user must be an owner; names are unique and passphrases have at 
   await assert.rejects(users.create({ name: "Asha", role: "boss", passphrase: "long enough pass" }), { message: USER_MESSAGES.role });
   const { user, first, session } = await users.create({ name: "Asha", role: "owner", passphrase: "long enough pass" });
   assert.equal(first, true);
-  assert.ok(session.cookie);
+  assert.ok(users.session(session.value));
   assert.deepEqual(Object.keys(user).sort(), ["createdAt", "id", "name", "role"]);
   await assert.rejects(users.create({ name: "asha", role: "viewer", passphrase: "another passphrase" }), { message: USER_MESSAGES.duplicate });
   const saved = JSON.parse(await readFile(path.join(home, "workstation.json"), "utf8"));
@@ -96,7 +96,7 @@ test("the last owner cannot be removed, demoted or disabled; an owner resets ano
 test("sessions last 12 hours from the last request, end on sign-out and are tied to the signing key", () => withDirectory(async ({ users, station, tick }) => {
   await users.create({ name: "Owner", role: "owner", passphrase: "owner passphrase" });
   const signed = await users.signIn({ name: "Owner", passphrase: "owner passphrase" });
-  assert.match(signed.cookie, new RegExp(`^ledgercraft_user=[^;]+; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_SECONDS}$`));
+  assert.equal(userCookie(4502, signed.value), `ledgercraft_user_4502=${signed.value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_SECONDS}`);
   assert.equal(SESSION_SECONDS, 43200);
   tick(11 * 3600_000);
   const live = users.session(signed.value);

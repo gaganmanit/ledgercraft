@@ -6,21 +6,23 @@ import path from "node:path";
 import { start } from "../server.js";
 
 const TOKEN = "c".repeat(48);
-const COOKIE_SHAPE = /^ledgercraft_user=[A-Za-z0-9._-]+; Path=\/; HttpOnly; SameSite=Strict; Max-Age=43200$/;
+const COOKIE_SHAPE = /^ledgercraft_user_\d+=[A-Za-z0-9._-]+; Path=\/; HttpOnly; SameSite=Strict; Max-Age=43200$/;
 
 async function withServer(run, options = { token: TOKEN }) {
   const home = await mkdtemp(path.join(os.tmpdir(), "ledgercraft-users-http-"));
   const server = await start({ home, ...options });
-  const base = `http://127.0.0.1:${server.address().port}`;
+  const port = server.address().port;
+  const base = `http://127.0.0.1:${port}`;
+  const userName = `ledgercraft_user_${port}=`;
   // Every call carries the start-link session cookie, as the Mac app's web view does.
   const call = async (route, { method = "GET", body, user, raw, noToken = false } = {}) => {
-    const cookies = [options.token && !noToken ? `ledgercraft_session=${options.token}` : "", user ? `ledgercraft_user=${user}` : ""].filter(Boolean).join("; ");
+    const cookies = [options.token && !noToken ? `ledgercraft_session_${port}=${options.token}` : "", user ? userName + user : ""].filter(Boolean).join("; ");
     const response = await fetch(base + route, { method, redirect: "manual", headers: { "content-type": "application/json", ...(cookies ? { cookie: cookies } : {}) }, body: raw ?? (body === undefined ? undefined : JSON.stringify(body)) });
     const text = await response.text();
     let json = null;
     try { json = JSON.parse(text); } catch { /* not JSON */ }
-    const setCookie = response.headers.getSetCookie().find((value) => value.startsWith("ledgercraft_user="));
-    return { status: response.status, body: json, setCookie, user: setCookie ? setCookie.split(";")[0].slice("ledgercraft_user=".length) : null };
+    const setCookie = response.headers.getSetCookie().find((value) => value.startsWith(userName));
+    return { status: response.status, body: json, setCookie, user: setCookie ? setCookie.split(";")[0].slice(userName.length) : null };
   };
   try { await run({ call, home }); }
   finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); await rm(home, { recursive: true, force: true }); }
@@ -144,7 +146,7 @@ test("with users every API call needs a signed-in user whose role allows it, and
   // Signing out ends the session.
   const out = await call("/api/session", { method: "DELETE", user: viewer });
   assert.deepEqual(out.body, { signedOut: true });
-  assert.match(out.setCookie, /^ledgercraft_user=; Path=\/; HttpOnly; SameSite=Strict; Max-Age=0$/);
+  assert.match(out.setCookie, /^ledgercraft_user_\d+=; Path=\/; HttpOnly; SameSite=Strict; Max-Age=0$/);
   assert.equal((await call("/api/companies", { user: viewer })).status, 401);
 
   // The workstation settings never expose the users or their hashes.
