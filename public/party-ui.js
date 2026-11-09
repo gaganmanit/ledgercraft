@@ -7,6 +7,18 @@ const bucketLabel = label => label === "current" ? "Current" : /^over(\d+)$/.tes
 const dayCount = days => `${Number(days).toLocaleString("en-IN")} ${Number(days) === 1 ? "day" : "days"}`;
 const DEFAULT_BUCKETS = ["current", "1-30", "31-60", "61-90", "91-180", "over180"].map(label => ({ label, paise: 0 }));
 
+/* Composition dealer flag on the GST party master (compositionDealer, boolean). GSTR-3B reads it:
+   inter-State sales to such a party go to Table 3.2 and every purchase from it goes to Table 5.
+   The party form and the party table import these so the field reads the same wherever it appears. */
+export function compositionDealerField(checked = false) {
+  return `<label class="check wide"><input type="checkbox" name="compositionDealer" value="true"${checked ? " checked" : ""}><span>Composition dealer (section 10)<small>Inter-State sales to this party go to Table 3.2 of GSTR-3B. Purchases from it go to Table 5.</small></span></label>`;
+}
+export const compositionDealerValue = form => form.elements.compositionDealer?.checked === true;
+export function setCompositionDealer(form, party) {
+  if (form.elements.compositionDealer) form.elements.compositionDealer.checked = party?.compositionDealer === true;
+}
+export const compositionDealerPill = party => party?.compositionDealer === true ? ` <span class="pill info">Composition dealer</span>` : "";
+
 export async function viewParties(route, token, ui) {
   if (route.name !== "parties") return false;
   if (!route.id) throw new Error("Open a company to review party statements");

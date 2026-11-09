@@ -1,1 +1,63 @@
-/* Styles for gst-ims-ui. Shared primitives live in ledgercraft.css; only screen-specific rules belong here. */
+/* Styles for gst-ims-ui: GSTR-2B matching results, IMS actions, matching tolerance and the rule 37 watch.
+   Shared primitives live in ledgercraft.css; only screen-specific rules belong here. */
+
+/* Matching results: the status pill carries the field differences beneath it, 2B ITC is a short pill,
+   and the IMS column holds the action pill with its date, the reason, history and the control.
+   Text wraps inside its cell; a narrow sheet scrolls the table sideways inside .table-scroll. */
+.ims-table td { vertical-align: top; }
+.ims-table th, .ims-table td { padding-right: 8px; }
+.ims-table th:not(.figure), .ims-table td:not(.figure) { padding-left: 8px; }
+.ims-table .code { overflow-wrap: normal; }
+.ims-code-part { white-space: nowrap; }
+.ims-gstin { white-space: nowrap; }
+.ims-doc { min-width: 6rem; }
+.ims-status { min-width: 12rem; }
+.ims-table thead th:first-child { width: 24%; }
+.ims-diffs { display: grid; gap: 2px; margin: 6px 0 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+.ims-diffs > div { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0 6px; }
+.ims-diffs dt { color: var(--ink-2); font-weight: 500; }
+.ims-diffs dd { margin: 0; color: var(--ink); overflow-wrap: break-word; }
+.ims-itc { min-width: 7rem; }
+.ims-itc .pill { flex-wrap: wrap; gap: 0 4px; white-space: normal; border-radius: 10px; }
+.ims-itc .pill > span { white-space: nowrap; }
+.ims-itc small { margin-top: 4px; }
+.ims-cell { min-width: 12rem; }
+.ims-cell > div + div { margin-top: 4px; }
+.ims-action-line { display: flex; align-items: baseline; gap: 6px; }
+.ims-action-line .quiet { font-size: 13px; }
+.ims-reason { overflow-wrap: break-word; }
+.ims-cell button.ghost { margin-top: 6px; }
+.ims-strip { margin-top: 10px; }
+
+/* Earlier IMS actions on a row, newest first. */
+.ims-history { margin-top: 6px; font-size: 13px; }
+.ims-history summary { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; color: var(--ink-2); }
+.ims-history summary small { color: var(--ink-3); }
+.ims-history ol { list-style: none; margin: 4px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--rule-2); display: grid; gap: 6px; }
+.ims-history li small { display: block; color: var(--ink-3); font-size: 12px; }
+
+/* The inline IMS action form opens as its own row under the document. */
+tr.ims-form-row > td { background: var(--field); padding: 12px 14px 14px; }
+tbody tr.ims-form-row:hover > td { background: var(--field); }
+.ims-action-form fieldset { background: var(--sheet); }
+.ims-action-form .form-message { margin-bottom: 8px; }
+.ims-action-fields { display: grid; grid-template-columns: minmax(12rem, 1fr) minmax(10rem, 12rem) minmax(16rem, 2fr); gap: 12px 14px; align-items: end; }
+.ims-action-form .actions { margin-top: 4px; }
+
+/* Matching tolerance: five amount limits and the supplier date limit. */
+.ims-tolerance .form-grid { margin-top: 10px; }
+.ims-tolerance fieldset .form-grid { grid-template-columns: minmax(0, 14rem); }
+.ims-tolerance input[name="days"] { font-variant-numeric: tabular-nums; }
+.ims-tolerance .status { margin: 0; }
+
+/* Rule 37 watch. */
+.ims-rule37 h4 { margin: 22px 0 4px; font-size: 15px; font-weight: 600; }
+.ims-rule37-table th[scope="row"] { min-width: 11rem; }
+.ims-itc-table th[scope="row"] { min-width: 12rem; }
+
+@media (max-width: 760px) {
+  .ims-action-fields { grid-template-columns: 1fr; }
+}
+@media print {
+  .ims-history, tr.ims-form-row, .ims-tolerance { display: none !important; }
+}

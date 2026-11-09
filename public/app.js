@@ -33,7 +33,53 @@ let renderToken = 0;
 const PAGE_ROWS = 200;
 /* A paged table registers how to show every row, so that printing never stops at the first page. */
 let expandForPrint = null;
+/* A register paged on the server registers how to fetch every row before printing or downloading. */
+let printHook = null;
+let exportHook = null;
 let shortcuts = { mac: true, open() {} };
+
+/* Who is signed in. While no users are set up, signInRequired is false and whoever opened the
+   start link is the owner. Once a user exists, every person signs in and the server checks the role. */
+const session = { signInRequired: false, user: null };
+const ROLE_NAMES = { owner: "Owner", accountant: "Accountant", viewer: "Viewer" };
+function currentRole() {
+  return session.signInRequired ? session.user?.role || "" : "owner";
+}
+const canWrite = () => ["owner", "accountant"].includes(currentRole());
+const isOwner = () => currentRole() === "owner";
+/* users-ui.css hides write controls on every screen from this attribute; it is absent while no users exist. */
+function applyRole() {
+  const role = session.signInRequired ? currentRole() : "";
+  if (role) document.documentElement.dataset.role = role;
+  else delete document.documentElement.dataset.role;
+}
+function setSession(next) {
+  const previous = sessionStorage.getItem("ledgercraft-user") || "";
+  session.signInRequired = Boolean(next.signInRequired);
+  session.user = next.user || null;
+  if (session.user) {
+    /* Drafts and periods on a shared Mac belong to the person who typed them. */
+    if (previous && previous !== session.user.id) sessionStorage.clear();
+    sessionStorage.setItem("ledgercraft-user", session.user.id);
+  }
+  applyRole();
+}
+async function refreshSession() {
+  try {
+    const data = await api("/api/session");
+    setSession(data);
+  } catch (error) {
+    if (!error.signIn) throw error;
+  }
+  return session;
+}
+function needSignIn() {
+  const showing = Boolean(root.querySelector("#sign-in"));
+  session.signInRequired = true;
+  session.user = null;
+  applyRole();
+  if (!showing) render();
+}
 
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
@@ -61,7 +107,20 @@ async function api(path, options = {}) {
     throw new Error("Ledgercraft could not reach its local server. Check that it is still running, then try again.");
   }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || (options.method && options.method !== "GET" ? "The book could not be updated" : "That page could not be loaded"));
+  if (!response.ok && data.signIn === true) {
+    /* The session ended or was never started (401 with signIn): the sign-in page takes over and the
+       caller stops. The flag decides, not the status alone, so the start-link refusal still reads as an error. */
+    const error = new Error(data.error || "Sign in to use these books");
+    error.status = 401;
+    error.signIn = true;
+    needSignIn();
+    throw error;
+  }
+  if (!response.ok) {
+    const error = new Error(data.error || (options.method && options.method !== "GET" ? "The book could not be updated" : "That page could not be loaded"));
+    error.status = response.status;
+    throw error;
+  }
   if (/^\/api\/companies\/[^/]+\/meta(\?|$)/.test(path)) bookWarning = typeof data.warning === "string" ? data.warning : "";
   return data;
 }
@@ -73,14 +132,17 @@ function focusNext(form, from) {
   const controls = [...form.querySelectorAll("input, select, textarea, button")].filter(el => !el.disabled && el.offsetParent !== null && el.getAttribute("aria-hidden") !== "true");
   const next = controls[controls.indexOf(from) + 1];
   if (next) next.focus();
-  if (next && typeof next.select === "function" && next.tagName === "INPUT") next.select();
+  /* Only text-like fields select their contents; a checkbox, date or file input keeps focus without it. */
+  if (next instanceof HTMLInputElement && TEXT_LIKE.has(next.type)) next.select();
   return Boolean(next);
 }
+const TEXT_LIKE = new Set(["text", "search", "tel", "url", "email", "password", "number"]);
 
 function parseRoute() {
   const parts = (location.hash.split("?")[0].replace(/^#/, "") || "/").split("/").filter(Boolean);
   if (parts[0] === "tally-import") return { name: "tally-import" };
   if (parts[0] === "transfer") return { name: "transfer" };
+  if (parts[0] === "users") return { name: "users" };
   if (parts[0] !== "c" || !parts[1]) return { name: "index" };
   const id = decodeURIComponent(parts[1]);
   const section = parts[2] || "home";
@@ -133,15 +195,24 @@ const destinations = [
   ["Books", [["ledgers", "Ledgers"], ["groups", "Groups"], ["parties", "Party statements"], ["audit", "Edit log"], ["settings", "Settings"], ["transfer", "Import & export"], ["tally-import", "Tally migration"]]],
 ];
 
+/* Entry routes leave the cover for viewers; owner-only routes leave it for everyone else. */
+const WRITE_ROUTES = new Set(["v/Receipt", "gst-invoice"]);
+const OWNER_ROUTES = new Set(["tally-import", "users"]);
+function visibleDestinations() {
+  return destinations.map(([group, links]) => [group, (group === "Books" ? [...links, ["users", "Users"]] : links)
+    .filter(([path]) => (canWrite() || !WRITE_ROUTES.has(path)) && (isOwner() || !OWNER_ROUTES.has(path)))]);
+}
+
 function dateLabel(iso) { return iso.split("-").reverse().join("-"); }
 function finderRoutes(id) {
   const book = id ? "#/c/" + encodeURIComponent(id) : "";
   const items = [{ title: "Switch company", detail: "Books on this Mac", href: "#/" }];
-  if (!id) return items.concat([{ title: "Import a company", href: "#/transfer" }]);
-  for (const [detail, links] of destinations) {
+  if (session.signInRequired && !session.user) return [];
+  if (!id) return items.concat(isOwner() ? [{ title: "Import a company", href: "#/transfer" }, { title: "Users", detail: "Who can open these books", href: "#/users" }] : []);
+  for (const [detail, links] of visibleDestinations()) {
     for (const [route, title] of links) items.push({ title, detail, href: book + (route ? "/" + route : "") });
   }
-  for (const type of TYPES) items.push({ title: "New " + type, detail: "Voucher", href: book + "/v/" + encodeURIComponent(type) });
+  if (canWrite()) for (const type of TYPES) items.push({ title: "New " + type, detail: "Voucher", href: book + "/v/" + encodeURIComponent(type) });
   return items;
 }
 
@@ -149,15 +220,22 @@ function themeLabel() {
   return document.documentElement.dataset.theme === "dark" ? "Light pages" : "Dark pages";
 }
 
-function page({ company, title, lede, error, status, body }) {
+function coverUser() {
+  if (!session.signInRequired || !session.user) return "";
+  return `<div class="cover-user"><span class="cover-user-name">${esc(session.user.name)}</span><span class="cover-user-role">${esc(ROLE_NAMES[session.user.role] || session.user.role)}</span><button type="button" class="cover-sign-out" data-sign-out>Sign out</button></div>`;
+}
+
+function page({ company, title, lede, error, status, body, locked = false }) {
   const book = company ? "#/c/" + encodeURIComponent(company.id) : "#/";
   const current = parseRoute().name;
   const link = (href, label, selected) => `<a href="${href}"${selected ? ' aria-current="page"' : ""}>${esc(label)}</a>`;
-  const nav = company ? destinations.map(([group, links]) => `<section class="nav-group"><h2>${esc(group)}</h2>${links.map(([path, label]) => {
+  const workspace = [["#/", "Companies", "index"], ...(isOwner() ? [["#/transfer", "Import a company", "transfer"], ["#/tally-import", "Import Tally data", "tally-import"], ["#/users", "Users", "users"]] : [])];
+  const nav = locked ? "" : company ? visibleDestinations().map(([group, links]) => `<section class="nav-group"><h2>${esc(group)}</h2>${links.map(([path, label]) => {
     if (path === "v/Receipt" && current === "home") return "";
     const selected = (path || "home") === current || (path.startsWith("v/") && current === "voucher");
     return link(`${book}${path ? "/" + path : ""}`, label, selected);
-  }).join("")}</section>`).join("") : `<section class="nav-group"><h2>Workspace</h2>${link("#/", "Companies", current === "index")}${link("#/transfer", "Import a company", current === "transfer")}${link("#/tally-import", "Import Tally data", current === "tally-import")}</section>`;
+  }).join("")}</section>`).join("") : `<section class="nav-group"><h2>Workspace</h2>${workspace.map(([href, label, name]) => link(href, label, current === name)).join("")}</section>`;
+  if (locked) company = null;
   const range = company ? readPeriod(company) : null;
   const specimen = company && /^specimen-[0-9a-f]{6}$/.test(company.id) && company.name === "North Mill Traders";
   const period = company ? `<span class="fy">FY ${esc(fyLabel(range.to))}</span>
@@ -167,13 +245,13 @@ function page({ company, title, lede, error, status, body }) {
       </form>` : "";
   return `<div class="app">
     <aside class="cover"><a class="brand" href="${book}"><span class="brand-mark" aria-hidden="true"></span>Ledgercraft</a>
-      <nav aria-label="Book navigation">${nav}</nav>
-      <div class="cover-foot"><div class="cover-buttons"><button type="button" class="theme-toggle" data-theme-toggle>${themeLabel()}</button><button type="button" class="theme-toggle" data-shortcuts aria-keyshortcuts="?">Keyboard shortcuts</button></div><p><span class="local-dot" aria-hidden="true"></span>Books stay on this Mac</p></div>
+      ${nav ? `<nav aria-label="Book navigation">${nav}</nav>` : ""}
+      <div class="cover-foot">${coverUser()}<div class="cover-buttons"><button type="button" class="theme-toggle" data-theme-toggle>${themeLabel()}</button>${locked ? "" : `<button type="button" class="theme-toggle" data-shortcuts aria-keyshortcuts="?">Keyboard shortcuts</button>`}</div><p><span class="local-dot" aria-hidden="true"></span>Books stay on this Mac</p></div>
     </aside>
     <div class="pages"><header class="topbar">
-      <a class="company-switch" href="#/"><strong>${esc(company?.name || "Companies")}</strong><span>${company ? (specimen ? "Specimen company" : "Switch company") : "Choose a company to open its books"}</span></a>
+      ${locked ? `<span class="company-switch"><strong>Ledgercraft</strong><span>Sign in to open the books on this Mac</span></span>` : `<a class="company-switch" href="#/"><strong>${esc(company?.name || "Companies")}</strong><span>${company ? (specimen ? "Specimen company" : "Switch company") : location.hash.startsWith("#/users") ? "Who signs in to these books" : "Choose a company to open its books"}</span></a>
       ${period}
-      <button type="button" class="find-button" data-find>Find <kbd>⌘K</kbd></button></header>
+      <button type="button" class="find-button" data-find>Find <kbd>⌘K</kbd></button>`}</header>
     <main class="sheet" id="sheet" tabindex="-1">
       <header class="sheet-head"><h1 tabindex="-1">${esc(title)}</h1>${lede ? `<p class="lede">${esc(lede)}</p>` : ""}</header>
       <div class="print-company">${esc(company?.name || "")}</div>
@@ -314,7 +392,7 @@ function figure(paise, dc = "") {
 }
 
 function moreRows() {
-  return `<div class="table-more" data-table-more hidden><p class="quiet" data-more-note></p><button type="button" class="ghost" data-more-rows>Show ${PAGE_ROWS} more rows</button></div>`;
+  return `<div class="table-more" data-table-more hidden><p class="quiet" data-more-note></p><button type="button" class="ghost" data-more-rows>Show ${PAGE_ROWS} more rows</button></div><p class="only-print" data-print-note hidden></p>`;
 }
 
 /* Renders the first `limit` rows of a list into a tbody and keeps the "Show more" control honest. */
@@ -337,6 +415,105 @@ function pagedTable({ table, rows, rowHtml, prefix = () => "", suffix = "", onPa
   return { update(next) { current = next; limit = PAGE_ROWS; paint(); } };
 }
 
+const rowCount = value => Number(value || 0).toLocaleString("en-IN");
+
+/*
+ * A register paged on the server. `first` is the answer for offset 0; "Show 200 more rows" asks
+ * for the next 200 with load(offset, limit). Printing and Download CSV fetch every row first
+ * with loadAll(). `filter` ({active(), test(row)}) narrows the rows already loaded, on screen
+ * only, and the note says so while rows remain on the server. `continuous(data, state)` checks
+ * that a later page still follows the rows on screen; when the books changed in between, the
+ * list starts again from the top. onPaint(state) keeps counts and totals in step.
+ */
+function serverPagedTable({ table, first, load, loadAll, rowHtml, prefix = () => "", suffix = "", filter = null, onPaint = () => {}, continuous = () => true, noun = "rows" }) {
+  const sheet = table.closest("#sheet");
+  const more = sheet.querySelector("[data-table-more]");
+  const note = more.querySelector("[data-more-note]");
+  const button = more.querySelector("[data-more-rows]");
+  const printNote = sheet.querySelector("[data-print-note]");
+  const body = table.tBodies[0];
+  const state = { rows: [], total: 0, data: null, complete: false, limit: PAGE_ROWS, matching: [], filtered: false };
+  let ticket = 0;
+  let busy = false;
+  const take = data => {
+    state.data = data;
+    state.rows = data.rows || [];
+    state.total = Number.isInteger(data.total) ? data.total : state.rows.length;
+    state.complete = state.rows.length >= state.total;
+  };
+  const paint = () => {
+    state.filtered = Boolean(filter?.active());
+    state.matching = state.filtered ? state.rows.filter(filter.test) : state.rows;
+    const shown = state.matching.slice(0, state.limit);
+    body.innerHTML = prefix(shown) + shown.map(rowHtml).join("") + suffix;
+    more.hidden = state.complete && state.matching.length <= shown.length;
+    if (state.complete) note.textContent = pagingNote(shown.length, state.matching.length).replace(/rows$/, noun);
+    else if (state.filtered) note.textContent = `The search covers the ${rowCount(state.rows.length)} ${noun} loaded so far, not all ${rowCount(state.total)}. Show more rows to search further.`;
+    else note.textContent = `Showing ${rowCount(shown.length)} of ${rowCount(state.total)} ${noun}`;
+    if (printNote) {
+      printNote.hidden = state.complete;
+      printNote.textContent = state.complete ? "" : `This print has the first ${rowCount(state.rows.length)} of ${rowCount(state.total)} ${noun}. Use Print on the page to print every row.`;
+    }
+    onPaint({ ...state, shown });
+  };
+  const fail = error => { if (!error.signIn) showAlert(error.message); };
+  const reset = async (next = null) => {
+    const mine = ++ticket;
+    try {
+      const data = next || await load(0, PAGE_ROWS);
+      if (mine !== ticket || !table.isConnected) return;
+      take(data);
+      state.limit = PAGE_ROWS;
+      paint();
+    } catch (error) { if (mine === ticket && table.isConnected) fail(error); }
+  };
+  const ensureAll = async () => {
+    if (state.complete) return;
+    const mine = ++ticket;
+    const data = await loadAll();
+    if (mine !== ticket) return;
+    take(data);
+    state.complete = true;
+  };
+  button.addEventListener("click", async () => {
+    if (busy) return;
+    if (state.matching.length > state.limit) { state.limit += PAGE_ROWS; paint(); return; }
+    if (state.complete) return;
+    busy = true;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    const mine = ticket;
+    try {
+      const data = await load(state.rows.length, PAGE_ROWS);
+      if (mine !== ticket || !table.isConnected) return;
+      if (data.total !== state.total || !continuous(data, state)) {
+        showAlert("These books changed while the list was open, so it starts again from the top.");
+        await reset();
+        return;
+      }
+      state.data = data;
+      state.rows = state.rows.concat(data.rows || []);
+      state.complete = state.rows.length >= state.total;
+      state.limit += PAGE_ROWS;
+      paint();
+    } catch (error) {
+      if (table.isConnected) fail(error);
+    } finally {
+      busy = false;
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
+  });
+  setExportRows(table, () => prefix(state.matching) + state.matching.map(rowHtml).join("") + suffix);
+  exportHook = async () => { await ensureAll(); paint(); };
+  /* paint() works out the matching rows from everything now loaded; the second paint shows them all. */
+  printHook = async () => { await ensureAll(); paint(); state.limit = Math.max(state.limit, state.matching.length); paint(); };
+  expandForPrint = () => { if (state.matching.length > state.limit) { state.limit = state.matching.length; paint(); } };
+  take(first);
+  paint();
+  return { state, paint, reset };
+}
+
 async function viewIndex(token, error = "") {
   const [{ companies }, settings] = await Promise.all([api("/api/companies"), api("/api/workstation")]);
   if (!still(token)) return;
@@ -356,7 +533,7 @@ async function viewIndex(token, error = "") {
           </a></li>`,
         )
         .join("")}</ol>`
-    : `<p class="empty">No company is on this desk yet.</p>`;
+    : `<p class="empty">${isOwner() ? "No company is on this desk yet." : "No company is on this desk yet. Ask the owner to open one."}</p>`;
   root.innerHTML = page({
     folio: "Bk",
     kicker: "Index",
@@ -364,10 +541,10 @@ async function viewIndex(token, error = "") {
     lede: "Open a book or start a new company.",
     error,
     body: `${list}
-      <form class="launch-pref" id="launch-pref"><label>On launch
+      ${canWrite() ? `<form class="launch-pref" id="launch-pref"><label>On launch
         <select name="launch"><option value="last"${settings.loadLastCompany ? " selected" : ""}>Reopen the last company</option><option value=""${!settings.loadLastCompany && !settings.defaultCompany ? " selected" : ""}>Choose a company</option>
-        ${companies.map(c => `<option value="${esc(c.id)}"${!settings.loadLastCompany && settings.defaultCompany === c.id ? " selected" : ""}>Open ${esc(c.name)}${bookDetail(c) ? " (" + esc(bookDetail(c)) + ")" : ""}</option>`).join("")}</select></label><button type="submit" class="ghost">Save preference</button><span role="status"></span></form>
-      <form class="foot-form" id="new-company">
+        ${companies.map(c => `<option value="${esc(c.id)}"${!settings.loadLastCompany && settings.defaultCompany === c.id ? " selected" : ""}>Open ${esc(c.name)}${bookDetail(c) ? " (" + esc(bookDetail(c)) + ")" : ""}</option>`).join("")}</select></label><button type="submit" class="ghost">Save preference</button><span role="status"></span></form>` : ""}
+      ${isOwner() ? `<form class="foot-form" id="new-company">
         <h2>Open a new book</h2>
         <label>Company name <input name="name" required minlength="2" maxlength="80" autocomplete="organization" /></label>
         <label>Books begin <input name="booksFrom" type="date" required value="${esc(fyStart(todayISO()))}" /></label>
@@ -375,9 +552,9 @@ async function viewIndex(token, error = "") {
           <button type="submit">Create the company</button>
           <button type="button" class="ghost" id="specimen">Add specimen company</button>
         </div>
-      </form>`,
+      </form>` : ""}`,
   });
-  document.querySelector("#launch-pref").addEventListener("submit", async event => {
+  document.querySelector("#launch-pref")?.addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget;
     const choice = form.elements.launch.value;
@@ -386,7 +563,7 @@ async function viewIndex(token, error = "") {
       form.querySelector("[role=status]").textContent = "Preference saved.";
     } catch (err) { showAlert(err.message, form); }
   });
-  document.querySelector("#new-company").addEventListener("submit", async (event) => {
+  document.querySelector("#new-company")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
@@ -403,7 +580,7 @@ async function viewIndex(token, error = "") {
       showAlert(err.message, form);
     }
   });
-  document.querySelector("#specimen").addEventListener("click", async (event) => {
+  document.querySelector("#specimen")?.addEventListener("click", async (event) => {
     const button = event.currentTarget;
     button.disabled = true;
     try {
@@ -456,7 +633,7 @@ async function viewHome(token, id) {
   const balance = (label, amount, route, suffix = "") => `<a class="review-balance" href="${book}/${route}"><span>${esc(label)}</span><strong>${esc(money(amount))}${suffix ? ` <small>${esc(suffix)}</small>` : ""}</strong></a>`;
   document.title = company.name + " · Ledgercraft";
   root.innerHTML = page({ company, folio: "Or", kicker: "Owner review", title: "Owner review", status: takeFlash(),
-    body: `<div class="review-intro"><p>Balances as of <strong>${esc(dateLabel(range.to))}</strong></p><details class="new-voucher-menu"><summary class="ink-link">New voucher</summary><div>${TYPES.map(type=>`<a href="${book}/v/${encodeURIComponent(type)}" aria-keyshortcuts="${esc(voucherKeyShortcut(type))}">${esc(type)} <kbd aria-hidden="true">${esc(voucherKeyLabel(type, shortcuts.mac))}</kbd></a>`).join("")}</div></details></div>
+    body: `<div class="review-intro"><p>Balances as of <strong>${esc(dateLabel(range.to))}</strong></p>${canWrite() ? `<details class="new-voucher-menu"><summary class="ink-link">New voucher</summary><div>${TYPES.map(type=>`<a href="${book}/v/${encodeURIComponent(type)}" aria-keyshortcuts="${esc(voucherKeyShortcut(type))}">${esc(type)} <kbd aria-hidden="true">${esc(voucherKeyLabel(type, shortcuts.mac))}</kbd></a>`).join("")}</div></details>` : ""}</div>
       <div class="balance-strip">${balance("Cash & bank", review.cashBank, "cash-bank", review.cashBank < 0 ? "Cr" : "")}
       ${balance(review.receivable < 0 ? "Customer advances" : "Net receivables", review.receivable, "outstanding/debtors")}
       ${balance(review.payable < 0 ? "Supplier advances" : "Net payables", review.payable, "outstanding/creditors")}</div>
@@ -571,21 +748,60 @@ function lockEntryForm(form) {
   };
 }
 
+/* The masters of the open company. After a slim write the change is merged here and the next
+   screen reuses it, instead of fetching the whole book again. Ordinary navigation always reads fresh. */
+let book = null;
+let reuseBook = false;
+async function loadMasters(id) {
+  const reuse = reuseBook && book?.id === id;
+  reuseBook = false;
+  if (reuse) return book;
+  const data = await api(`/api/companies/${encodeURIComponent(id)}/masters`);
+  book = { id, company: data.company, nextNumbers: data.nextNumbers || {}, usedLedgerIds: new Set(data.usedLedgerIds || []) };
+  return book;
+}
+
+/* Merge a slim write answer ({company, group|ledger|voucher, nextNumbers, removed?, replayed?}) into the masters. */
+function mergeSlim(id, kind, saved) {
+  if (!book || book.id !== id || !saved) return false;
+  if (saved.nextNumbers) book.nextNumbers = saved.nextNumbers;
+  const record = saved[kind];
+  if (!record) return true;
+  if (kind === "voucher") {
+    if (!saved.removed) for (const line of record.lines || []) book.usedLedgerIds.add(line.ledgerId);
+    return true;
+  }
+  const list = kind === "group" ? book.company.groups : book.company.ledgers;
+  const at = list.findIndex(item => item.id === record.id);
+  if (saved.removed) { if (at >= 0) list.splice(at, 1); }
+  else if (at >= 0) list[at] = record;
+  else list.push(record);
+  return true;
+}
+
+/* Render the current route again from the merged masters. */
+function renderMerged(id, kind, saved) {
+  reuseBook = mergeSlim(id, kind, saved);
+  render();
+}
+
 async function viewGroups(token, id) {
-  const { company } = await api(`/api/companies/${encodeURIComponent(id)}/masters`);
+  const { company } = await loadMasters(id);
   if (!still(token)) return;
+  const writable = canWrite();
   document.title = `Groups · ${company.name}`;
   const options = company.groups.map((group) => `<option value="${esc(group.id)}">${esc(groupPath(company, group.id))}</option>`).join("");
-  const rows = company.groups.map((group) => `<tr><th scope="row">${esc(group.name)}</th><td>${esc(group.parentId ? groupPath(company, group.parentId) : "Primary")}</td><td>${esc(group.nature || "As parent")}</td><td>${group.reserved ? "" : `<button class="ghost" data-edit-group="${esc(group.id)}">Edit</button>`}</td></tr>`).join("");
+  const rows = company.groups.map((group) => `<tr><th scope="row">${esc(group.name)}</th><td>${esc(group.parentId ? groupPath(company, group.parentId) : "Primary")}</td><td>${esc(group.nature || "As parent")}</td>${writable ? `<td>${group.reserved ? "" : `<button class="ghost" data-edit-group="${esc(group.id)}">Edit</button>`}</td>` : ""}</tr>`).join("");
   root.innerHTML = page({ company, folio: "Gp", kicker: "Masters", title: "Groups",
     lede: "A new group inherits its parent’s accounting treatment.",
-    body: `<table><thead><tr><th>Group</th><th>Under</th><th>Nature</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-      <form class="foot-form" id="group-form"><h2 id="group-heading">Add a group</h2>
+    body: `<table><thead><tr><th>Group</th><th>Under</th><th>Nature</th>${writable ? "<th></th>" : ""}</tr></thead><tbody>${rows}</tbody></table>
+      ${writable ? `<form class="foot-form" id="group-form"><h2 id="group-heading">Add a group</h2>
         <label>Name <input name="name" required minlength="2" maxlength="80" /></label>
         <label>Under <select name="parentId">${options}</select></label>
         <div class="actions"><button type="submit">Add the group</button><button type="button" class="ghost" id="group-cancel" hidden>Cancel edit</button><button type="button" class="danger" id="group-remove" hidden>Remove group</button></div>
-      </form>` });
+      </form>` : ""}` });
   const form = document.querySelector("#group-form");
+  if (!form) return;
   let editing = null;
   let saving = false;
   form.addEventListener("input", () => { form.dataset.dirty = "1"; });
@@ -613,10 +829,10 @@ async function viewGroups(token, id) {
     button.disabled = true;
     const unlock = lockEntryForm(form);
     try {
-      await api(`/api/companies/${encodeURIComponent(id)}/groups${editing ? `/${encodeURIComponent(editing.id)}` : ""}`, {
-        method: editing ? "PUT" : "POST", body: { name: form.elements.name.value, parentId: form.elements.parentId.value, expected: editing ? { name: editing.name } : undefined },
+      const saved = await api(`/api/companies/${encodeURIComponent(id)}/groups${editing ? `/${encodeURIComponent(editing.id)}` : ""}`, {
+        method: editing ? "PUT" : "POST", body: { name: form.elements.name.value, parentId: form.elements.parentId.value, expected: editing ? { name: editing.name } : undefined, slim: true },
       });
-      render();
+      renderMerged(id, "group", saved);
     } catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message, form); }
   });
   document.querySelector("#group-remove").addEventListener("click", async (event) => {
@@ -625,15 +841,18 @@ async function viewGroups(token, id) {
     const button = event.currentTarget;
     button.disabled = true;
     const unlock = lockEntryForm(form);
-    try { await api(`/api/companies/${encodeURIComponent(id)}/groups/${encodeURIComponent(editing.id)}`, { method: "DELETE", body: { expected: { name: editing.name } } }); render(); }
+    try {
+      const saved = await api(`/api/companies/${encodeURIComponent(id)}/groups/${encodeURIComponent(editing.id)}`, { method: "DELETE", body: { expected: { name: editing.name }, slim: true } });
+      renderMerged(id, "group", saved);
+    }
     catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message, form); }
   });
 }
 
 async function viewLedgers(token, id) {
-  const { company, usedLedgerIds } = await api(`/api/companies/${encodeURIComponent(id)}/masters`);
-  const usedLedgers = new Set(usedLedgerIds);
+  const { company, usedLedgerIds: usedLedgers } = await loadMasters(id);
   if (!still(token)) return;
+  const writable = canWrite();
   document.title = `Ledgers · ${company.name}`;
   const groups = company.groups.map((group) => `<option value="${esc(group.id)}">${esc(groupPath(company, group.id))}</option>`).join("");
   /* Credit terms belong to sundry debtors and creditors; MSME status only to creditors. */
@@ -649,12 +868,12 @@ async function viewLedgers(token, id) {
   const rows = company.ledgers.slice().sort((a, b) => a.name.localeCompare(b.name)).map((ledger) => `<tr data-ledger-row data-search="${esc(`${ledger.name} ${groupPath(company, ledger.groupId)} ${termsText(ledger)}`.toLowerCase())}">
     <th scope="row"><a href="#/c/${esc(id)}/ledger/${esc(ledger.id)}">${esc(ledger.name)}</a>${termsText(ledger) ? `<div class="quiet">${esc(termsText(ledger))}</div>` : ""}</th><td>${esc(groupPath(company, ledger.groupId))}</td>
     <td class="figure">${ledger.opening.paise ? `${esc(formatINR(ledger.opening.paise))}<span class="dc">${esc(ledger.opening.dc)}</span>` : "—"}</td>
-    <td><button class="ghost" data-edit-ledger="${esc(ledger.id)}">Edit</button></td></tr>`).join("");
+    ${writable ? `<td><button class="ghost" data-edit-ledger="${esc(ledger.id)}">Edit</button></td>` : ""}</tr>`).join("");
   root.innerHTML = page({ company, folio: "Ld", kicker: "Masters", title: "Ledgers",
     lede: "Open a ledger to review its entries, or edit its name, group and opening.",
     body: `<div class="period ledger-tools"><label>Find a ledger <input type="search" id="ledger-search" placeholder="Name or group" /></label><button type="button" class="ghost" data-export-csv>Download CSV</button></div>
-      <table><thead><tr><th>Ledger</th><th>Group path</th><th class="figure">Opening</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-      <form class="foot-form" id="ledger-form"><h2>Add a ledger</h2>
+      <table><thead><tr><th>Ledger</th><th>Group path</th><th class="figure">Opening</th>${writable ? "<th></th>" : ""}</tr></thead><tbody>${rows}</tbody></table>
+      ${writable ? `<form class="foot-form" id="ledger-form"><h2>Add a ledger</h2>
         <label>Name <input name="name" required minlength="2" maxlength="80" /></label>
         <label>Group <select name="groupId">${groups}</select></label>
         <label>Opening balance <input name="opening" inputmode="decimal" value="0.00" /></label>
@@ -664,8 +883,13 @@ async function viewLedgers(token, id) {
         <label class="check" data-msme-field hidden><input type="checkbox" name="msme" /><span>Registered MSME supplier (45-day payment rule)<small>Bills unpaid more than 45 days after their date are flagged, because Section 43B(h) of the Income-tax Act allows them as an expense only in the year they are paid.</small></span></label>
         <label data-opening-reason hidden>Reason for correcting the opening balance <textarea name="reason" maxlength="240" rows="2" placeholder="For example: audited opening balance for FY 2026-27 received from the CA"></textarea><small class="field-note" id="opening-note">Vouchers already use this ledger. A correction needs a reason of 10 to 240 characters and is written to the edit log.</small></label>
         <div class="actions"><button type="submit">Add the ledger</button><button type="button" class="ghost" id="ledger-cancel" hidden>Cancel edit</button><button type="button" class="danger" id="ledger-remove" hidden>Remove ledger</button></div>
-      </form>` });
+      </form>` : ""}` });
+  document.querySelector("#ledger-search").addEventListener("input", (event) => {
+    const query = event.target.value.toLowerCase().trim();
+    for (const row of document.querySelectorAll("[data-ledger-row]")) row.hidden = !row.dataset.search.includes(query);
+  });
   const form = document.querySelector("#ledger-form");
+  if (!form) return;
   let editing = null;
   let saving = false;
   form.addEventListener("input", () => { form.dataset.dirty = "1"; });
@@ -679,10 +903,6 @@ async function viewLedgers(token, id) {
   };
   form.elements.groupId.addEventListener("change", showTerms);
   showTerms();
-  document.querySelector("#ledger-search").addEventListener("input", (event) => {
-    const query = event.target.value.toLowerCase().trim();
-    for (const row of document.querySelectorAll("[data-ledger-row]")) row.hidden = !row.dataset.search.includes(query);
-  });
   for (const button of document.querySelectorAll("[data-edit-ledger]")) button.addEventListener("click", () => {
     if (saving || !discardChanges()) return;
     form.dataset.dirty = "";
@@ -715,10 +935,10 @@ async function viewLedgers(token, id) {
     const terms = { creditDays: (kind.creditor || kind.debtor) && days !== "" ? Number(days) : null, msme: kind.creditor ? form.elements.msme.checked : false };
     const unlock = lockEntryForm(form);
     try {
-      await api(`/api/companies/${encodeURIComponent(id)}/ledgers${editing ? `/${encodeURIComponent(editing.id)}` : ""}`, {
-        method: editing ? "PUT" : "POST", body: { name: form.elements.name.value, groupId: form.elements.groupId.value, openingPaise: parseRupees(form.elements.opening.value), openingDc: form.elements.openingDc.value, ...terms, ...(editing && form.elements.reason.value.trim() ? { reason: form.elements.reason.value.trim() } : {}), expected: editing ? { name: editing.name, groupId: editing.groupId, opening: editing.opening } : undefined },
+      const saved = await api(`/api/companies/${encodeURIComponent(id)}/ledgers${editing ? `/${encodeURIComponent(editing.id)}` : ""}`, {
+        method: editing ? "PUT" : "POST", body: { name: form.elements.name.value, groupId: form.elements.groupId.value, openingPaise: parseRupees(form.elements.opening.value), openingDc: form.elements.openingDc.value, ...terms, ...(editing && form.elements.reason.value.trim() ? { reason: form.elements.reason.value.trim() } : {}), expected: editing ? { name: editing.name, groupId: editing.groupId, opening: editing.opening } : undefined, slim: true },
       });
-      render();
+      renderMerged(id, "ledger", saved);
     } catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message, form); }
   });
   document.querySelector("#ledger-remove").addEventListener("click", async (event) => {
@@ -727,14 +947,17 @@ async function viewLedgers(token, id) {
     const button = event.currentTarget;
     button.disabled = true;
     const unlock = lockEntryForm(form);
-    try { await api(`/api/companies/${encodeURIComponent(id)}/ledgers/${encodeURIComponent(editing.id)}`, { method: "DELETE", body: { expected: { name: editing.name, groupId: editing.groupId, opening: editing.opening } } }); render(); }
+    try {
+      const saved = await api(`/api/companies/${encodeURIComponent(id)}/ledgers/${encodeURIComponent(editing.id)}`, { method: "DELETE", body: { expected: { name: editing.name, groupId: editing.groupId, opening: editing.opening }, slim: true } });
+      renderMerged(id, "ledger", saved);
+    }
     catch (error) { unlock(); saving = false; button.disabled = false; showAlert(error.message, form); }
   });
 }
 
 async function viewVoucher(token, id, type, voucherId) {
   if (!TYPES.includes(type)) throw new Error("That voucher type is not in these books");
-  const { company, voucher, nextNumbers } = await api(`/api/companies/${encodeURIComponent(id)}${voucherId ? `/vouchers/${encodeURIComponent(voucherId)}` : "/masters"}`);
+  const { company, voucher, nextNumbers } = voucherId ? await api(`/api/companies/${encodeURIComponent(id)}/vouchers/${encodeURIComponent(voucherId)}`) : await loadMasters(id);
   if (!still(token)) return;
   const existing = voucherId ? voucher : null;
   if (existing?.gst) {
@@ -744,6 +967,7 @@ async function viewVoucher(token, id, type, voucherId) {
   if (existing) type = existing.type;
   if (voucherId && !existing) throw new Error("That voucher is not in this company");
   document.title = `${type} · ${company.name}`;
+  if (!canWrite()) return viewVoucherReadOnly({ company, id, type, existing });
   const dateKey = `financer-voucher-date-${id}-${type}`;
   const duplicateKey = `financer-duplicate-${id}-${type}`;
   let duplicate = null;
@@ -794,9 +1018,10 @@ async function viewVoucher(token, id, type, voucherId) {
     target?.select();
   };
   const createLedger = async ({ name, groupId }) => {
-    const saved = await api(`/api/companies/${encodeURIComponent(id)}/ledgers`, { method: "POST", body: { name, groupId, openingPaise: 0, openingDc: "Dr" } });
-    const ledger = saved.company?.ledgers?.find(item => item.name.toLowerCase() === name.trim().toLowerCase());
-    if (!ledger) throw new Error("The ledger was saved but could not be found. Reload the voucher to use it.");
+    const saved = await api(`/api/companies/${encodeURIComponent(id)}/ledgers`, { method: "POST", body: { name, groupId, openingPaise: 0, openingDc: "Dr", slim: true } });
+    const ledger = saved.ledger;
+    if (!ledger?.id) throw new Error("The ledger was saved but could not be found. Reload the voucher to use it.");
+    mergeSlim(id, "ledger", saved);
     if (!company.ledgers.some(item => item.id === ledger.id)) company.ledgers.push(ledger);
     if (!directory.ledgers.some(item => item.id === ledger.id)) directory.ledgers.push({ id: ledger.id, name: ledger.name, groupId: ledger.groupId, path: groupPath(company, ledger.groupId) });
     for (const select of form.querySelectorAll("select[name=ledger]")) {
@@ -875,13 +1100,16 @@ async function viewVoucher(token, id, type, voucherId) {
     let unlock = () => {};
     try {
       const data = new FormData(form);
-      const payload = { type, date: data.get("date"), number: data.get("number"), narration: data.get("narration"), lines: collectLines(form), requestId: existing ? undefined : requestId, expected: existing ? { type: existing.type, date: existing.date, number: existing.number, narration: existing.narration, lines: existing.lines } : undefined };
+      const payload = { type, date: data.get("date"), number: data.get("number"), narration: data.get("narration"), lines: collectLines(form), requestId: existing ? undefined : requestId, expected: existing ? { type: existing.type, date: existing.date, number: existing.number, narration: existing.narration, lines: existing.lines } : undefined, slim: true };
       const path = `/api/companies/${encodeURIComponent(id)}/vouchers${existing ? `/${encodeURIComponent(existing.id)}` : ""}`;
       unlock = lockEntryForm(form);
+      /* A slim answer carries the voucher and the next numbers. A replayed answer means this
+         voucher was already passed by an earlier attempt with the same request, which is success. */
       const saved = await api(path, { method: existing ? "PUT" : "POST", body: payload });
       sessionStorage.removeItem(draftKey);
       sessionStorage.setItem(dateKey, saved.voucher.date);
       sessionStorage.setItem("financer-flash", `${saved.voucher.number} ${existing ? "saved" : "passed"}.`);
+      reuseBook = mergeSlim(id, "voucher", saved);
       const next = `#/c/${id}/v/${encodeURIComponent(type)}`;
       if (location.hash === next) render(); else location.hash = next;
     } catch (error) { unlock(); saving = false; showAlert(error.message, form); bindDifference(form); }
@@ -894,22 +1122,48 @@ async function viewVoucher(token, id, type, voucherId) {
     if (!confirm(`Remove voucher ${existing.number}?`)) return;
     const button = event.currentTarget;
     button.disabled = true;
-    try { await api(`/api/companies/${encodeURIComponent(id)}/vouchers/${encodeURIComponent(existing.id)}`, { method: "DELETE", body: { expected: { type: existing.type, date: existing.date, number: existing.number, narration: existing.narration, lines: existing.lines } } }); location.hash = `#/c/${id}/daybook`; }
+    try {
+      const saved = await api(`/api/companies/${encodeURIComponent(id)}/vouchers/${encodeURIComponent(existing.id)}`, { method: "DELETE", body: { expected: { type: existing.type, date: existing.date, number: existing.number, narration: existing.narration, lines: existing.lines }, slim: true } });
+      mergeSlim(id, "voucher", saved);
+      location.hash = `#/c/${id}/daybook`;
+    }
     catch (error) { button.disabled = false; showAlert(error.message, form); }
   });
   if (!existing) { const first = form.querySelector("#lines tr"); if (first) ledgerControl(first).focus(); }
+}
+
+/* Viewers read a voucher; they never see the entry form. */
+function viewVoucherReadOnly({ company, id, type, existing }) {
+  const register = `<div class="actions"><a href="#/c/${esc(id)}/daybook?type=${encodeURIComponent(type)}">${esc(type)} register</a>${existing ? `<a href="#/c/${esc(id)}/voucher-print/${esc(existing.id)}">Print voucher</a>` : ""}</div>`;
+  if (!existing) {
+    root.innerHTML = page({ company, title: type, lede: "Your role can view these books but not change them. The owner or an accountant passes vouchers.", body: register });
+    return;
+  }
+  const names = new Map(company.ledgers.map(ledger => [ledger.id, ledger.name]));
+  const debit = existing.lines.reduce((sum, line) => sum + (line.dc === "Dr" ? line.paise : 0), 0);
+  const credit = existing.lines.reduce((sum, line) => sum + (line.dc === "Cr" ? line.paise : 0), 0);
+  root.innerHTML = page({ company, title: `${type} ${existing.number}`, lede: "Your role can view these books but not change them.",
+    body: `${register}<dl class="kv"><dt>Date</dt><dd>${esc(dateLabel(existing.date))}</dd><dt>Number</dt><dd class="code">${esc(existing.number)}</dd>${existing.narration ? `<dt>Narration</dt><dd>${esc(existing.narration)}</dd>` : ""}</dl>
+      <table class="voucher-table"><thead><tr><th>Particulars</th><th class="figure">Debit</th><th class="figure">Credit</th></tr></thead>
+      <tbody>${existing.lines.map(line => `<tr><td><a href="#/c/${esc(id)}/ledger/${esc(encodeURIComponent(line.ledgerId))}">${esc(names.get(line.ledgerId) || "Missing ledger")}</a></td>${figure(line.dc === "Dr" ? line.paise : 0)}${figure(line.dc === "Cr" ? line.paise : 0)}</tr>`).join("")}</tbody>
+      <tfoot><tr class="total"><th scope="row">Total</th>${figure(debit)}${figure(credit)}</tr></tfoot></table>` });
 }
 
 async function viewDaybook(token, id) {
   const bundle = await api(`/api/companies/${encodeURIComponent(id)}/meta`);
   if (!still(token)) return;
   const range = readPeriod(bundle.company);
-  const report = await api(`/api/companies/${encodeURIComponent(id)}/reports/daybook?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`);
+  const address = (page = null) => `/api/companies/${encodeURIComponent(id)}/reports/daybook?${new URLSearchParams({ from: range.from, to: range.to, ...(page ? { offset: String(page.offset), limit: String(page.limit) } : {}) })}`;
+  const first = await api(address({ offset: 0, limit: PAGE_ROWS }));
   if (!still(token)) return;
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   const selectedType = TYPES.includes(params.get("type")) ? params.get("type") : "";
-  const entries = report.rows.map(row => ({ row, search: `${row.number} ${row.particulars} ${row.narration || ""}`.toLowerCase() }));
-  const rowHtml = ({ row }) => {
+  const searchText = new WeakMap();
+  const haystack = row => {
+    if (!searchText.has(row)) searchText.set(row, `${row.number} ${row.particulars} ${row.narration || ""}`.toLowerCase());
+    return searchText.get(row);
+  };
+  const rowHtml = row => {
     const narration = row.narration || "";
     return `<tr data-book-row data-type="${esc(row.type)}">
       <td class="date-cell">${esc(dateLabel(row.date))}</td><td><a class="voucher-ref" href="#/c/${esc(id)}/v/${encodeURIComponent(row.type)}/${encodeURIComponent(row.id)}">${esc(row.number)}</a></td><td>${esc(row.type)}</td>
@@ -921,31 +1175,44 @@ async function viewDaybook(token, id) {
       <label>Search <input type="search" id="daybook-search" placeholder="Narration, ledger or voucher number" /></label></div>
       <table><thead><tr><th>Date</th><th>No.</th><th>Type</th><th>Particulars</th><th class="figure">Amount</th></tr></thead><tbody></tbody><tfoot><tr class="total"><th colspan="4" id="daybook-count"></th><td class="figure" id="daybook-total"></td></tr></tfoot></table>${moreRows()}` });
   bindPeriod(bundle.company);
-  const empty = `<tr id="daybook-empty" data-export-skip><td colspan="5" class="quiet">No vouchers match this period and search.</td></tr>`;
-  const table = root.querySelector("#sheet table");
-  const pager = pagedTable({ table, rows: entries, rowHtml, prefix: shown => shown.length ? "" : empty });
-  /* Count and total cover every matching voucher, not only the rows on screen. */
-  const filter = () => {
-    const type = document.querySelector("#daybook-type").value;
-    const query = document.querySelector("#daybook-search").value.toLowerCase().trim();
-    const matching = entries.filter(entry => (!type || entry.row.type === type) && entry.search.includes(query));
-    const total = matching.reduce((sum, entry) => sum + entry.row.paise, 0);
-    document.querySelector("#daybook-count").textContent = `${matching.length.toLocaleString("en-IN")} voucher${matching.length === 1 ? "" : "s"}`;
-    document.querySelector("#daybook-total").textContent = formatINR(total);
-    pager.update(matching);
+  const typeSelect = document.querySelector("#daybook-type");
+  const searchBox = document.querySelector("#daybook-search");
+  const filter = {
+    active: () => Boolean(typeSelect.value || searchBox.value.trim()),
+    test: row => (!typeSelect.value || row.type === typeSelect.value) && haystack(row).includes(searchBox.value.toLowerCase().trim()),
   };
-  document.querySelector("#daybook-type").addEventListener("change", filter);
-  document.querySelector("#daybook-search").addEventListener("input", filter);
-  filter();
+  const empty = `<tr id="daybook-empty" data-export-skip><td colspan="5" class="quiet">No vouchers match this period and search.</td></tr>`;
+  const vouchers = count => `${rowCount(count)} voucher${count === 1 ? "" : "s"}`;
+  /* Unfiltered, the count and total cover the whole period from the server. A filter can only
+     cover the rows loaded so far, and the footer says how many those are. */
+  const onPaint = state => {
+    let label;
+    let total;
+    if (!state.filtered) { label = vouchers(state.total); total = state.data?.totalPaise ?? 0; }
+    else {
+      total = state.matching.reduce((sum, row) => sum + row.paise, 0);
+      label = state.complete ? vouchers(state.matching.length) : `${vouchers(state.matching.length)} match in the ${rowCount(state.rows.length)} loaded`;
+    }
+    document.querySelector("#daybook-count").textContent = label;
+    document.querySelector("#daybook-total").textContent = formatINR(total);
+  };
+  const pager = serverPagedTable({ table: root.querySelector("#sheet table"), first, filter, onPaint, rowHtml, noun: "vouchers",
+    prefix: shown => shown.length ? "" : empty,
+    load: (offset, limit) => api(address({ offset, limit })),
+    loadAll: () => api(address()) });
+  /* Rows already loaded stay on screen when a filter changes or clears. */
+  typeSelect.addEventListener("change", pager.paint);
+  searchBox.addEventListener("input", pager.paint);
 }
+
+const sameBalance = (a, b) => Boolean(a && b) && a.paise === b.paise && (a.paise === 0 || a.dc === b.dc);
 
 async function viewLedger(token, id, ledgerId) {
   const bundle = await api(`/api/companies/${encodeURIComponent(id)}/meta`);
   if (!still(token)) return;
   const range = readPeriod(bundle.company);
-  const report = await api(
-    `/api/companies/${encodeURIComponent(id)}/reports/ledger/${encodeURIComponent(ledgerId)}?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`,
-  );
+  const address = (page = null) => `/api/companies/${encodeURIComponent(id)}/reports/ledger/${encodeURIComponent(ledgerId)}?${new URLSearchParams({ from: range.from, to: range.to, ...(page ? { offset: String(page.offset), limit: String(page.limit) } : {}) })}`;
+  const report = await api(address({ offset: 0, limit: PAGE_ROWS }));
   if (!still(token)) return;
   /* Sundry debtors and creditors, including ledgers in groups beneath them, also have a statement of account. */
   let partyLedger = PARTY_GROUPS.includes(report.ledger.groupId);
@@ -953,18 +1220,24 @@ async function viewLedger(token, id, ledgerId) {
     try {
       const { company } = await api(`/api/companies/${encodeURIComponent(id)}/masters`);
       partyLedger = PARTY_GROUPS.some((groupId) => underGroup(company, report.ledger.groupId, groupId));
-    } catch { /* The statement link is a convenience; the ledger report stands without it. */ }
+    } catch (error) { if (error.signIn) return; /* The statement link is a convenience; the ledger report stands without it. */ }
     if (!still(token)) return;
   }
   document.title = `${report.ledger.name} · ${bundle.company.name}`;
-  const opening = `<tr><th scope="row">Opening</th><td></td><td></td>${figure(report.opening.dc === "Dr" ? report.opening.paise : 0)}${figure(report.opening.dc === "Cr" ? report.opening.paise : 0)}<td class="figure">${esc(formatINR(report.opening.paise))}<span class="dc">${esc(report.opening.dc)}</span></td></tr>`;
+  /* Opening, period totals and closing cover the whole period and come with every page. When the
+     books change while the list is open, the list starts again and these follow the latest answer. */
+  let latest = report;
+  const fetchPage = async path => (latest = await api(path));
+  const balanceCell = balance => `<td class="figure">${esc(formatINR(balance.paise))}<span class="dc">${esc(balance.dc)}</span></td>`;
+  const opening = () => `<tr><th scope="row">Opening</th><td></td><td></td>${figure(latest.opening.dc === "Dr" ? latest.opening.paise : 0)}${figure(latest.opening.dc === "Cr" ? latest.opening.paise : 0)}${balanceCell(latest.opening)}</tr>`;
+  /* Each line's balance is the server's running balance over the whole period, so a later page continues the column. */
   const lineHtml = (line) => `<tr>
         <td class="date-cell">${esc(dateLabel(line.date))}</td>
         <td><a href="#/c/${esc(id)}/v/${encodeURIComponent(line.type)}/${encodeURIComponent(line.voucherId)}">${esc(line.number)}</a></td>
         <td>${esc(line.contra)}${line.narration ? `<div class="quiet">${esc(line.narration)}</div>` : ""}</td>
         ${figure(line.dc === "Dr" ? line.paise : 0)}
         ${figure(line.dc === "Cr" ? line.paise : 0)}
-        <td class="figure">${esc(formatINR(line.balance.paise))}<span class="dc">${esc(line.balance.dc)}</span></td>
+        ${balanceCell(line.balance)}
       </tr>`;
   root.innerHTML = page({
     company: bundle.company,
@@ -975,11 +1248,21 @@ async function viewLedger(token, id, ledgerId) {
       <table>
         <thead><tr><th>Date</th><th>No.</th><th>Particulars</th><th class="figure">Debit</th><th class="figure">Credit</th><th class="figure">Balance</th></tr></thead>
         <tbody></tbody>
-        <tfoot><tr class="total"><th colspan="3">Closing</th><td></td><td></td><td class="figure">${esc(formatINR(report.closing.paise))}<span class="dc">${esc(report.closing.dc)}</span></td></tr></tfoot>
+        <tfoot><tr id="ledger-totals"></tr><tr class="total" id="ledger-closing"></tr></tfoot>
       </table>${moreRows()}`,
   });
   bindPeriod(bundle.company);
-  pagedTable({ table: root.querySelector("#sheet table"), rows: report.lines, rowHtml: lineHtml, prefix: () => opening });
+  const totalsRow = root.querySelector("#ledger-totals");
+  const closingRow = root.querySelector("#ledger-closing");
+  serverPagedTable({ table: root.querySelector("#sheet table"), first: report, rowHtml: lineHtml, prefix: opening, noun: "entries",
+    onPaint: state => {
+      const totals = latest.totals || { debitPaise: 0, creditPaise: 0 };
+      totalsRow.innerHTML = `<th colspan="3">Period totals, ${rowCount(state.total)} ${state.total === 1 ? "entry" : "entries"}</th>${figure(totals.debitPaise)}${figure(totals.creditPaise)}<td></td>`;
+      closingRow.innerHTML = `<th colspan="3">Closing</th><td></td><td></td>${balanceCell(latest.closing)}`;
+    },
+    continuous: (data, state) => sameBalance(data.pageOpening, state.rows.at(-1)?.balance),
+    load: (offset, limit) => fetchPage(address({ offset, limit })),
+    loadAll: () => fetchPage(address()) });
 }
 
 async function viewTrial(token, id) {
@@ -1156,21 +1439,35 @@ function afterRender(token) {
 async function render() {
   const token = ++renderToken;
   expandForPrint = null;
+  printHook = null;
+  exportHook = null;
   try {
     await renderRoute(token);
   } finally {
+    /* Merged masters serve only the render that follows a slim write. */
+    if (still(token)) reuseBook = false;
     afterRender(token);
   }
 }
 
 async function renderRoute(token) {
   const route = parseRoute();
+  const ui = { root, api, still, page, esc, readPeriod, periodBar, bindPeriod, formatINR, todayISO, showAlert, focusNext,
+    session, currentRole, canWrite, isOwner, setSession, refreshSession, render, moreRows, serverPagedTable, PAGE_ROWS };
   try {
-    if (route.id && route.id !== rememberedCompany) {
-      rememberedCompany = route.id;
-      api("/api/workstation", { method: "PUT", body: { lastCompany: route.id } }).catch(() => { rememberedCompany = null; });
+    if (session.signInRequired && !session.user) {
+      const { viewSignIn } = await import("/session-ui.js");
+      return await viewSignIn(token, ui);
     }
-    const ui = { root, api, still, page, esc, readPeriod, periodBar, bindPeriod, formatINR, todayISO };
+    /* Remembering the last company is a convenience. A viewer may not save it, so a viewer never asks, and a refusal stays silent. */
+    if (route.id && route.id !== rememberedCompany && canWrite()) {
+      rememberedCompany = route.id;
+      api("/api/workstation", { method: "PUT", body: { lastCompany: route.id } }).catch(error => { if (error.status !== 403 && !error.signIn) rememberedCompany = null; });
+    }
+    if (route.name === "users") {
+      const { viewUsers } = await import("/users-ui.js");
+      return await viewUsers(route, token, ui);
+    }
     if (route.name === "bank-reconciliation" || route.name === "bill-outstanding") {
       const { viewReconciliation } = await import("/reconciliation-ui.js");
       return await viewReconciliation(route, token, ui);
@@ -1232,7 +1529,7 @@ async function renderRoute(token) {
     if (route.name === "bs") return await viewBalance(token, route.id);
     location.hash = `#/c/${route.id || ""}`;
   } catch (error) {
-    if (!still(token)) return;
+    if (!still(token) || error.signIn) return;
     document.title = "Ledgercraft";
     root.innerHTML = page({
       company: null,
@@ -1245,8 +1542,11 @@ async function renderRoute(token) {
 
 let rememberedCompany = null;
 document.addEventListener("click", event => {
-  if (event.target.closest("[data-print-sheet]")) window.print();
-  if (event.target.closest("[data-export-csv]")) exportSheet();
+  const print = event.target.closest("[data-print-sheet]");
+  if (print) printSheet(print);
+  const download = event.target.closest("[data-export-csv]");
+  if (download) exportSheet(download);
+  if (event.target.closest("[data-sign-out]")) signOut();
   if (event.target.closest("[data-retry]")) render();
   if (event.target.closest(".skip")) { event.preventDefault(); document.querySelector("#sheet")?.focus(); }
   if (event.target.closest("[data-focus-period]")) { event.preventDefault(); document.querySelector("#period-control [name=from]")?.focus(); }
@@ -1282,8 +1582,44 @@ window.addEventListener("financer-new-voucher", () => {
 installFinder({ api, esc, parseRoute, routes: finderRoutes });
 shortcuts = installShortcuts({ esc, parseRoute });
 window.addEventListener("beforeprint", () => expandForPrint?.());
+/* On a register paged on the server, ⌘P fetches every row before the print dialog opens. */
+document.addEventListener("keydown", event => {
+  if (!printHook || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "p") return;
+  event.preventDefault();
+  printSheet(document.querySelector("[data-print-sheet]"));
+});
 
-function exportSheet() {
+/* Runs a hook that fetches the rest of a register, with the button busy meanwhile. False when it failed. */
+async function prepareSheet(hook, button) {
+  if (!hook) return true;
+  const token = renderToken;
+  if (button) { button.disabled = true; button.setAttribute("aria-busy", "true"); }
+  try {
+    await hook();
+    return still(token);
+  } catch (error) {
+    if (!error.signIn && still(token)) showAlert(error.message);
+    return false;
+  } finally {
+    if (button) { button.disabled = false; button.removeAttribute("aria-busy"); }
+  }
+}
+
+async function printSheet(button) {
+  if (await prepareSheet(printHook, button)) window.print();
+}
+
+async function signOut() {
+  try { await api("/api/session", { method: "DELETE" }); }
+  catch (error) { if (!error.signIn) { showAlert(error.message); return; } }
+  /* The next person at this Mac starts with no drafts or periods from this one. */
+  sessionStorage.clear();
+  book = null;
+  needSignIn();
+}
+
+async function exportSheet(button) {
+  if (!(await prepareSheet(exportHook, button))) return;
   const sheet = document.querySelector("#sheet");
   const model = sheetModel(sheet);
   if (!model || !model.rows.length) { showAlert("This page has no rows to download. Change the period or the search, then try again."); return; }
@@ -1298,6 +1634,9 @@ function exportSheet() {
 window.addEventListener("hashchange", render);
 async function openDesk() {
   if (location.search.includes("token=")) history.replaceState(null, "", location.pathname + location.hash);
+  try { await refreshSession(); } catch { /* The normal render path displays any startup failure. */ }
+  /* A refused session has already put the sign-in page up. */
+  if (session.signInRequired && !session.user) return;
   if (!location.hash) {
     try {
       const [settings, { companies }] = await Promise.all([api("/api/workstation"), api("/api/companies")]);

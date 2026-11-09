@@ -1,1 +1,60 @@
 /* Styles for reconciliation-loop. Shared primitives live in ledgercraft.css; only screen-specific rules belong here. */
+/* Bank reconciliation loop: match suggestions, vouchers from statement rows, bank rules and the statement source. */
+
+.recon-statement-facts { margin: 6px 0 4px; }
+.recon-saved { margin: 16px 0 0; }
+.recon-saved a { color: inherit; }
+.recon-match-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: none; }
+.recon-statement-table td:nth-child(2) { min-width: 16rem; }
+
+/* Suggestions under an unmatched statement row: book entries for the same amount, nearest first. */
+.recon-suggestions { margin-top: 8px; padding-left: 10px; border-left: 2px solid var(--rule-2); }
+.recon-suggestions-title { margin: 0 0 2px; font-size: 13px; color: var(--ink-2); }
+.recon-suggestions ul { list-style: none; margin: 0; padding: 0; }
+/* Each suggestion keeps the 32px touch target of .reconciliation-candidate but lays out as a row: entry on the left, Match on the right. */
+.reconciliation-workspace .recon-suggestions li.reconciliation-candidate { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; min-height: 32px; margin: 0; padding: 4px 0; border-top: 1px solid var(--rule); font-size: 13px; }
+.reconciliation-workspace .recon-suggestions li.reconciliation-candidate:first-child { border-top: 0; }
+.recon-suggestion-entry { min-width: 0; }
+.recon-suggestion-entry .pill { margin-left: 4px; }
+.recon-suggestion-entry .pill .code { font-size: 12px; }
+.recon-rule { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 8px 0 0; padding: 6px 10px; background: var(--blue-soft); border-radius: var(--r-1); font-size: 13px; color: var(--ink); }
+.recon-row-actions { margin-top: 8px; }
+
+/* The inline voucher form sits in its own row under the statement row it settles. */
+tbody tr.recon-voucher-row > td, tbody tr.recon-voucher-row:hover > td { padding: 0 10px 14px; background: var(--field); }
+.recon-voucher-form { padding: 12px 14px 4px; border-left: 3px solid var(--blue); }
+.recon-form-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.recon-voucher-form > .form-message { margin: 10px 0 0; }
+.recon-voucher-form .form-grid { margin-top: 10px; }
+.recon-voucher-form .actions { margin-top: 4px; }
+.recon-voucher-form input:not([type="checkbox"]), .recon-voucher-form select { background-color: var(--sheet); }
+.recon-ledger-field { display: grid; gap: 5px; font-size: 14px; color: var(--ink-2); }
+
+/* Bank rules: one editable row per rule, in priority order. */
+.recon-rules .recon-rules-form { margin-top: 6px; }
+.recon-rules-form > .form-note { max-width: 70ch; margin-top: 6px; }
+.recon-rules-form > .notice { margin: 12px 0 0; }
+.recon-rules-table td { vertical-align: top; }
+.recon-rules-table input, .recon-rules-table select { min-height: var(--control); }
+/* The pattern, ledger and narration cells share the spare width and shrink to 10rem; their fields fill the cell, so a long
+   regular expression scrolls inside its input instead of widening the row. Up, Down and Remove stay on one line. The row
+   fits a 1440px window; a narrower sheet scrolls the table sideways inside .table-scroll. */
+.recon-rules-table td:nth-child(2), .recon-rules-table td:nth-child(3), .recon-rules-table td:nth-child(5) { min-width: 10rem; }
+.recon-rules-table input[name="pattern"], .recon-rules-table input[name="narration"], .recon-rules-table .ledger-picker input[role="combobox"] { width: 100%; min-width: 0; }
+/* Wide enough to show "From the row direction" in full. */
+.recon-rules-table select[name="type"] { min-width: 12rem; }
+.recon-rule-priority { width: 1%; padding-top: 14px; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.recon-rule-actions { width: 1%; white-space: nowrap; }
+.recon-rule-actions button + button { margin-left: 4px; }
+
+/* A confirmed match briefly highlights after a voucher created from its row is saved. Reduced motion turns this off in ledgercraft.css. */
+@keyframes recon-saved-flash { from { background-color: var(--green-soft); } to { background-color: transparent; } }
+tr.recon-just-saved > td { animation: recon-saved-flash 1.6s ease-out; }
+
+@media (max-width: 760px) {
+  .reconciliation-workspace .recon-suggestions li.reconciliation-candidate { flex-wrap: wrap; }
+  .recon-match-actions { width: 100%; }
+}
+@media print {
+  .recon-suggestions, .recon-rule, .recon-row-actions, .recon-voucher-row, .recon-saved, .recon-match-actions { display: none !important; }
+}

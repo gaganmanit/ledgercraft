@@ -1,6 +1,7 @@
 import { amountOnlyService } from "/gst-line-basis.js";
 import { tallyInvoiceReferences } from "/tally-invoice-references.js";
 import { formatINR, parseRupees, todayISO } from "/money.js";
+import { compositionDealerField, compositionDealerPill, compositionDealerValue, setCompositionDealer } from "/party-ui.js";
 
 const GST_ROUTES = new Set(["gst", "gst-invoice", "gst-register", "gst-document"]);
 const TYPES = ["Sales", "Purchase", "Credit Note", "Debit Note"];
@@ -35,10 +36,78 @@ function amountInWords(paise) {
   return `Indian rupees ${indianWords(whole)}${fraction ? ` and ${belowHundred(fraction)} paise` : ""} only`;
 }
 
+/*
+ * Invoice register: GET /api/companies/<id>/gst-register filters by period, document type and words
+ * on the server, newest first, 200 documents a page. The count and totals come from the server and
+ * cover every matching document; Download CSV and Print fetch every matching document first.
+ */
+async function viewRegister(route, token, ui) {
+  const { root, api, still, page, esc, readPeriod, periodBar, bindPeriod, moreRows, serverPagedTable, PAGE_ROWS, canWrite } = ui;
+  const base = `/api/companies/${encodeURIComponent(route.id)}`;
+  const meta = await api(`${base}/meta`);
+  if (!still(token)) return true;
+  const range = readPeriod(meta.company);
+  const filters = { type: "", q: "" };
+  const address = (page = null, values = filters) => `${base}/gst-register?${new URLSearchParams({ from: range.from, to: range.to, ...(values.type ? { type: values.type } : {}), ...(values.q ? { q: values.q } : {}), ...(page ? { offset: String(page.offset), limit: String(page.limit) } : {}) })}`;
+  const first = await api(address({ offset: 0, limit: PAGE_ROWS }));
+  if (!still(token)) return true;
+  const company = { ...meta.company, ...first.company };
+  const book = `#/c/${encodeURIComponent(company.id)}`;
+  const money = value => esc(formatINR(value || 0));
+  /* Whether these books hold any GST document at all decides what an empty register says. */
+  let anyDocuments = first.total > 0;
+  if (!anyDocuments) {
+    try { anyDocuments = (await api(`${base}/gst-register?limit=1`)).total > 0; } catch (error) { if (error.signIn) return true; }
+    if (!still(token)) return true;
+  }
+  const flashKey = `financer-gst-flash:${company.id}`;
+  const flash = sessionStorage.getItem(flashKey) || "";
+  sessionStorage.removeItem(flashKey);
+  const typeOptions = TYPES.map(type => `<option>${type}</option>`).join("");
+  document.title = `Invoice register · ${company.name}`;
+  root.innerHTML = page({ company, kicker: "Billing", title: "Invoice register", folio: "Ir", status: flash, body: `<div class="gst-workspace">${periodBar(range)}<div class="toolbar gst-register-filters"><label class="grow">Search invoices<input name="invoiceSearch" type="search" placeholder="Number, party, GSTIN or narration" autocomplete="off"></label><label>Document type<select name="invoiceType"><option value="">All documents</option>${typeOptions}</select></label></div>
+      <div class="table-scroll" data-invoice-list><table class="gst-register-table"><thead><tr><th>Date</th><th>Document</th><th>Party</th><th class="figure">Taxable (₹)</th><th class="figure">Tax (₹)</th><th class="figure">Amount due (₹)</th></tr></thead><tbody data-invoice-rows></tbody>
+      <tfoot><tr class="total"><th scope="row" colspan="3" data-invoice-count></th><td class="figure" data-total-taxable></td><td class="figure" data-total-tax></td><td class="figure" data-total-due></td></tr></tfoot></table></div>
+      ${moreRows()}<p class="sr" data-invoice-status role="status"></p></div>` });
+  const search = root.querySelector('[name="invoiceSearch"]');
+  const typeFilter = root.querySelector('[name="invoiceType"]');
+  const count = root.querySelector("[data-invoice-count]");
+  const announce = root.querySelector("[data-invoice-status]");
+  const empty = () => anyDocuments
+    ? '<tr><td colspan="6" class="quiet">No documents in this period match the search. Clear the search or change the period in the top bar.</td></tr>'
+    : `<tr><td colspan="6" class="quiet">No invoices in these books yet.${canWrite() ? ` <a href="${book}/gst-invoice">Create the first invoice</a>.` : ""}</td></tr>`;
+  const rowMarkup = invoice => `<tr><td class="date-cell">${dateLabel(invoice.date)}</td><th scope="row"><a class="code" href="${book}/gst-document/${esc(invoice.id)}">${esc(invoice.number)}</a><small class="gst-detail">${esc(invoice.type)}</small></th><td>${esc(invoice.party?.name)}<small class="gst-detail">${invoice.party?.gstin ? `<span class="code">${esc(invoice.party.gstin)}</span>` : "Unregistered"}</small></td><td class="figure">${money(invoice.taxablePaise)}</td><td class="figure">${money(invoice.taxPaise)}</td><td class="figure">${money(invoice.amountDuePaise)}</td></tr>`;
+  const onPaint = state => {
+    const totals = state.data?.totals || {};
+    const label = `${state.total.toLocaleString("en-IN")} document${state.total === 1 ? "" : "s"}`;
+    count.textContent = `Total of ${label}`;
+    root.querySelector("[data-total-taxable]").textContent = formatINR(totals.taxablePaise || 0);
+    root.querySelector("[data-total-tax]").textContent = formatINR(totals.taxPaise || 0);
+    root.querySelector("[data-total-due]").textContent = formatINR(totals.amountDuePaise || 0);
+    announce.textContent = label;
+  };
+  const pager = serverPagedTable({ table: root.querySelector(".gst-register-table"), first, rowHtml: rowMarkup, onPaint, noun: "documents",
+    prefix: shown => shown.length ? "" : empty(),
+    load: (offset, limit) => api(address({ offset, limit })),
+    loadAll: () => api(address()) });
+  /* A filter asks the server again from the first page; the latest request wins. */
+  const apply = () => {
+    filters.type = typeFilter.value;
+    filters.q = search.value.trim();
+    pager.reset();
+  };
+  let searchTimer;
+  search.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(apply, 250); });
+  typeFilter.addEventListener("change", () => { clearTimeout(searchTimer); apply(); });
+  bindPeriod(company);
+  return true;
+}
+
 export async function viewGst(route, token, ui) {
   if (!GST_ROUTES.has(route.name)) return false;
   const { root, api, still, page, esc, readPeriod, periodBar, bindPeriod } = ui;
   if (!route.id) throw new Error("Open a company to use billing");
+  if (route.name === "gst-register") return viewRegister(route, token, ui);
   const base = `/api/companies/${encodeURIComponent(route.id)}/gst`;
   const state = await api(base);
   if (!still(token)) return true;
@@ -84,7 +153,11 @@ export async function viewGst(route, token, ui) {
         for (const draft of drafts) {
           const restored = root.querySelector(`#${draft.id}`);
           if (!restored) continue;
-          for (const [name, value] of Object.entries(draft.values)) if (restored.elements[name]) restored.elements[name].value = value;
+          for (const [name, value] of Object.entries(draft.values)) {
+            const control = restored.elements[name];
+            if (!control) continue;
+            if (control.type === "checkbox") control.checked = true; else control.value = value;
+          }
           restored.elements.kind?.dispatchEvent(new Event("change", { bubbles: true }));
           restored.elements.stateCode?.dispatchEvent(new Event("change"));
         }
@@ -116,7 +189,7 @@ export async function viewGst(route, token, ui) {
       <label class="wide" data-declaration hidden>Rule 46(s) declaration for this registration<textarea name="declaration" maxlength="1200" rows="3"></textarea></label>
       <div class="wide actions"><button type="submit">Save applicability</button></div>${message}</form></details>` : "";
     const itemRows = items.map(item => `<tr><th scope="row"><button class="link gst-edit-master" type="button" data-edit-item="${esc(item.id)}" aria-label="Edit ${esc(item.name)}">${esc(item.name)}</button><small class="gst-detail">${esc(item.kind === "service" ? "Service" : "Goods")}</small>${item.kind === "goods" ? `<small class="gst-detail"><a href="${book}/stock-item/${encodeURIComponent(item.id)}">Stock ledger and costing</a></small>` : ""}</th><td class="code">${esc(item.hsnSac)}</td><td>${esc(item.unit)}</td><td class="gst-num">${item.kind === "goods" ? esc(state.inventory?.find(row => row.itemId === item.id)?.quantity || item.openingQuantity) : "—"}</td><td class="gst-num">${decimal(item.gstRateBps)}%</td><td class="figure">${money(item.pricePaise)}</td></tr>`).join("");
-    const partyRows = parties.map(party => `<tr><th scope="row"><button class="link gst-edit-master" type="button" data-edit-party="${esc(party.id)}" aria-label="Edit ${esc(party.name)}">${esc(party.name)}</button>${Number.isInteger(party.creditDays) ? `<small class="quiet">${party.creditDays === 1 ? "1 credit day" : `${party.creditDays} credit days`}</small>` : ""}</th><td>${party.gstin ? `<span class="code">${esc(party.gstin)}</span>` : '<span class="quiet">Unregistered</span>'}</td><td>${esc(stateName(party.stateCode))}</td><td>${esc(ROLES[party.kind] || party.kind)}</td></tr>`).join("");
+    const partyRows = parties.map(party => `<tr><th scope="row"><button class="link gst-edit-master" type="button" data-edit-party="${esc(party.id)}" aria-label="Edit ${esc(party.name)}">${esc(party.name)}</button>${compositionDealerPill(party)}${Number.isInteger(party.creditDays) ? `<small class="quiet">${party.creditDays === 1 ? "1 credit day" : `${party.creditDays} credit days`}</small>` : ""}</th><td>${party.gstin ? `<span class="code">${esc(party.gstin)}</span>` : '<span class="quiet">Unregistered</span>'}</td><td>${esc(stateName(party.stateCode))}</td><td>${esc(ROLES[party.kind] || party.kind)}</td></tr>`).join("");
     render("GST setup & catalog", `<section class="subsection"><h2>Business registration</h2>${registrations.length ? `<label class="gst-registration-choice">Registration<select data-registration-choice>${registrationOptions()}<option value="">Add another registration</option></select></label>` : `<p class="subsection-intro">Enter the GSTIN and address that will print on your invoices.</p>`}<form id="gst-registration" class="form-grid">
       <input type="hidden" name="id" value="${esc(registration.id || "")}">
       ${field("name", "Registration name", registration.name || company.name, 'required maxlength="80"')}
@@ -159,6 +232,7 @@ export async function viewGst(route, token, ui) {
         ${field("phone", "Phone", "", 'type="tel" maxlength="30"')}
         ${field("email", "Email", "", 'type="email" maxlength="120"')}
         <label>Credit days (optional)<input name="creditDays" type="number" inputmode="numeric" min="0" max="3650" step="1"><span class="field-note">Due date for ageing is the document date plus these days</span></label>
+        ${compositionDealerField()}
         <div class="wide actions"><button type="submit">Save party</button><button type="button" class="ghost" data-new-party>New party</button></div>${message}
       </form></details></div>
     </section>`);
@@ -192,7 +266,7 @@ export async function viewGst(route, token, ui) {
       bindMaster("#gst-turnover", "turnover", form => object(form), "Turnover band saved for this PAN and financial year.");
     }
     bindMaster("#gst-registration", "settings", form => object(form), "Business registration saved.");
-    bindMaster("#gst-party", "parties", form => ({ ...object(form), creditDays: form.get("creditDays") === "" ? null : Number(form.get("creditDays")) }), "Party saved.");
+    bindMaster("#gst-party", "parties", form => ({ ...object(form), creditDays: form.get("creditDays") === "" ? null : Number(form.get("creditDays")), compositionDealer: compositionDealerValue(root.querySelector("#gst-party")) }), "Party saved.");
     bindMaster("#gst-item", "items", form => ({ id: form.get("id") || undefined, name: form.get("name"), kind: form.get("kind"), hsnSac: form.get("hsnSac"), unit: form.get("unit"), pricePaise: parseRupees(form.get("price")), purchasePricePaise: parseRupees(form.get("purchasePrice")), gstRateBps: rateBps(form.get("gstRate")), cessRateBps: rateBps(form.get("cessRate")), supplyStatus: form.get("supplyStatus"), openingQuantity: form.get("kind") === "goods" ? form.get("openingQuantity") : "0" }), "Item saved.");
     const itemSummary = root.querySelector("[data-item-summary]");
     const partySummary = root.querySelector("[data-party-summary]");
@@ -215,13 +289,14 @@ export async function viewGst(route, token, ui) {
       form.closest("details").open = true;
       partySummary.textContent = `Edit ${party.name}`;
       for (const name of ["id", "name", "kind", "gstin", "stateCode", "address", "pincode", "phone", "email", "creditDays"]) form.elements[name].value = party[name] ?? "";
+      setCompositionDealer(form, party);
       form.elements.name.focus();
       form.scrollIntoView({ block: "center" });
     });
     root.querySelector("[data-new-item]").addEventListener("click", () => {
       const form = root.querySelector("#gst-item"); form.reset(); form.elements.openingQuantity.disabled = false; itemSummary.textContent = "Add a product or service"; form.elements.name.focus();
     });
-    root.querySelector("[data-new-party]").addEventListener("click", () => { const form = root.querySelector("#gst-party"); form.reset(); partySummary.textContent = "Add a customer or supplier"; form.elements.name.focus(); });
+    root.querySelector("[data-new-party]").addEventListener("click", () => { const form = root.querySelector("#gst-party"); form.reset(); setCompositionDealer(form, null); partySummary.textContent = "Add a customer or supplier"; form.elements.name.focus(); });
     root.querySelector('#gst-item [name="kind"]').addEventListener("change", event => {
       const opening = root.querySelector('#gst-item [name="openingQuantity"]');
       opening.disabled = event.target.value === "service";
@@ -229,39 +304,6 @@ export async function viewGst(route, token, ui) {
     });
     bindHsnLookup(root.querySelector("#gst-item"), api, esc, still, token);
     for (const form of root.querySelectorAll("form")) bindGstinState(form);
-    return true;
-  }
-
-  if (route.name === "gst-register") {
-    const range = readPeriod(company);
-    const typeOptions = TYPES.map(type => `<option>${type}</option>`).join("");
-    const empty = invoices.length
-      ? '<tr><td colspan="6" class="quiet">No documents in this period match the search. Clear the search or change the period in the top bar.</td></tr>'
-      : `<tr><td colspan="6" class="quiet">No invoices in these books yet. <a href="${book}/gst-invoice">Create the first invoice</a>.</td></tr>`;
-    render("Invoice register", `${periodBar(range)}<div class="toolbar gst-register-filters"><label class="grow">Search invoices<input name="invoiceSearch" type="search" placeholder="Number, party, GSTIN or narration" autocomplete="off"></label><label>Document type<select name="invoiceType"><option value="">All documents</option>${typeOptions}</select></label></div>
-      <div class="table-scroll" data-invoice-list><table class="gst-register-table"><thead><tr><th>Date</th><th>Document</th><th>Party</th><th class="figure">Taxable (₹)</th><th class="figure">Tax (₹)</th><th class="figure">Amount due (₹)</th></tr></thead><tbody data-invoice-rows></tbody></table></div>
-      <p class="hint" data-invoice-count role="status"></p>`, "Ir");
-    const search = root.querySelector('[name="invoiceSearch"]');
-    const typeFilter = root.querySelector('[name="invoiceType"]');
-    const body = root.querySelector("[data-invoice-rows]");
-    const count = root.querySelector("[data-invoice-count]");
-    const inPeriod = invoices
-      .filter(invoice => invoice.date >= range.from && invoice.date <= range.to)
-      .sort((a, b) => b.date.localeCompare(a.date) || b.number.localeCompare(a.number))
-      .map(invoice => ({ invoice, haystack: [invoice.number, invoice.party?.name, invoice.party?.gstin, invoice.narration].join(" ").toLowerCase() }));
-    const rowMarkup = invoice => `<tr><td class="date-cell">${dateLabel(invoice.date)}</td><th scope="row"><a class="code" href="${book}/gst-document/${esc(invoice.id)}">${esc(invoice.number)}</a><small class="gst-detail">${esc(invoice.type)}</small></th><td>${esc(invoice.party?.name)}<small class="gst-detail">${invoice.party?.gstin ? `<span class="code">${esc(invoice.party.gstin)}</span>` : "Unregistered"}</small></td><td class="figure">${money(invoice.totals.taxablePaise)}</td><td class="figure">${money(invoice.totals.taxPaise)}</td><td class="figure">${money(invoice.partyDuePaise ?? invoice.totals.totalPaise)}</td></tr>`;
-    const draw = () => {
-      const needle = search.value.trim().toLowerCase();
-      const type = typeFilter.value;
-      const rows = inPeriod.filter(row => (!type || row.invoice.type === type) && (!needle || row.haystack.includes(needle)));
-      body.innerHTML = rows.map(row => rowMarkup(row.invoice)).join("") || empty;
-      count.textContent = `${rows.length} document${rows.length === 1 ? "" : "s"}`;
-    };
-    let searchTimer;
-    search.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(draw, 120); });
-    typeFilter.addEventListener("change", () => { clearTimeout(searchTimer); draw(); });
-    bindPeriod(company);
-    draw();
     return true;
   }
 

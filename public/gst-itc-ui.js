@@ -43,7 +43,7 @@ export async function viewPurchaseItc(route, token, ui) {
     return states.length ? `<span class="itc-states">${states.join(' ')}</span>` : pill('ok', 'Fully credited');
   };
   const documentHref = id => `${book}/gst-itc/${encodeURIComponent(id)}?to=${encodeURIComponent(to)}`;
-  const rows = documents.map(document => `<tr${document.id === selected?.id ? ' aria-selected="true"' : ''}><th scope="row"><a class="code" href="${documentHref(document.id)}">${esc(document.supplierInvoiceNumber || document.number)}</a><div class="quiet">${esc(document.partyName)}</div><div class="quiet">${esc(document.type)} dated ${esc(dateLabel(document.date))}</div></th><td class="figure">${money(document.totals.taxPaise)}</td><td class="figure">${money(total(document.balances.claimable))}</td><td>${disposition(document)}</td></tr>`).join('');
+  const rows = documents.map(document => `<tr data-itc-document="${esc(document.id)}"${document.id === selected?.id ? ' aria-selected="true"' : ''}><th scope="row"><a class="code" href="${documentHref(document.id)}">${esc(document.supplierInvoiceNumber || document.number)}</a><div class="quiet">${esc(document.partyName)}</div><div class="quiet">${esc(document.type)} dated ${esc(dateLabel(document.date))}</div></th><td class="figure">${money(document.totals.taxPaise)}</td><td class="figure">${money(total(document.balances.claimable))}</td><td>${disposition(document)} <span data-itc-ims></span></td></tr>`).join('');
   const issues = report.issues.length ? `<div class="attention-rule"><h2>Review points</h2><ul>${report.issues.map(issue => `<li><a class="code" href="${documentHref(issue.invoiceId)}">${esc(documents.find(document => document.id === issue.invoiceId)?.supplierInvoiceNumber || issue.invoiceId)}</a>: ${esc(issue.message)}</li>`).join('')}</ul></div>` : '';
   const documentOptions = documents.map(document => `<option value="${esc(document.id)}"${document.id === selected?.id ? ' selected' : ''}>${esc(document.supplierInvoiceNumber || document.number)} (${esc(document.partyName)})</option>`).join('');
   const history = selected ? renderHistory(report, selected, esc, money, book) : '';
@@ -87,8 +87,40 @@ export async function viewPurchaseItc(route, token, ui) {
     const date = new FormData(event.currentTarget).get('to');
     location.hash = `${book}/gst-itc${selected ? '/' + encodeURIComponent(selected.id) : ''}?to=${encodeURIComponent(date)}`;
   });
-  if (selected) bindReview({ ...ui, route, token, base, report, selected, book, money, flashKey });
+  const imsCache = new Map();
+  if (selected) bindReview({ ...ui, route, token, base, report, selected, book, money, flashKey, imsCache, companyPath });
+  flagImsEvidence({ api, still, token, esc, root, report, companyPath, imsCache });
   return true;
+}
+
+/* IMS on GSTR-2B evidence: a rejected or pending supplier document is not available credit. */
+const IMS_FLAG = { reject: ['bad', 'IMS: rejected'], pending: ['warn', 'IMS: pending'] };
+const imsPill = action => IMS_FLAG[action] ? `<span class="pill ${IMS_FLAG[action][0]}">${IMS_FLAG[action][1]}</span>` : '';
+/* Row key to IMS state for one saved statement, fetched once per page. */
+function imsRows(api, companyPath, cache, registrationId, statementId) {
+  const key = `${registrationId}|${statementId}`;
+  if (!cache.has(key)) cache.set(key, api(`${companyPath}/gst-returns/ims?${new URLSearchParams({ registration: registrationId, statement: statementId })}`)
+    .then(view => new Map(view.rows.map(row => [row.rowKey, row.ims || {}]))).catch(() => new Map()));
+  return cache.get(key);
+}
+async function flagImsEvidence({ api, still, token, esc, root, report, companyPath, imsCache }) {
+  const cited = report.records.filter(record => record.evidence?.statement?.id && record.evidence.statement.rowKey && record.registrationId);
+  const statements = [...new Map(cited.map(record => [`${record.registrationId}|${record.evidence.statement.id}`, record])).values()].slice(0, 12);
+  if (!statements.length) return;
+  const lookups = new Map(await Promise.all(statements.map(async record => [`${record.registrationId}|${record.evidence.statement.id}`, await imsRows(api, companyPath, imsCache, record.registrationId, record.evidence.statement.id)])));
+  if (!still(token)) return;
+  const flagged = new Map();
+  for (const record of cited) {
+    const ims = lookups.get(`${record.registrationId}|${record.evidence.statement.id}`)?.get(record.evidence.statement.rowKey);
+    if (!IMS_FLAG[ims?.action]) continue;
+    const slot = root.querySelector(`[data-itc-ims-record="${CSS.escape(record.id)}"]`);
+    if (slot) slot.innerHTML = imsPill(ims.action);
+    for (const invoiceId of [record.invoiceId, ...(record.transfers || []).map(transfer => transfer.invoiceId)]) if (invoiceId && !flagged.has(invoiceId)) flagged.set(invoiceId, ims.action);
+  }
+  for (const [invoiceId, action] of flagged) {
+    const slot = root.querySelector(`[data-itc-document="${CSS.escape(invoiceId)}"] [data-itc-ims]`);
+    if (slot) slot.innerHTML = imsPill(action);
+  }
 }
 
 function renderHistory(report, selected, esc, money, book) {
@@ -96,11 +128,11 @@ function renderHistory(report, selected, esc, money, book) {
   const ledgerName = id => report.ledgers.find(ledger => ledger.id === id)?.name || id;
   const statement = value => value ? `<p>Statement for ${esc(value.period)}.${value.matchStatus ? ` Match status ${esc(value.matchStatus)}.` : ''} Row <span class="code">${esc(value.rowKey)}</span>.</p>` : '';
   const serviceReceipts = list => list?.length ? `<dl class="kv" data-itc-service-receipts>${list.map(receipt => `<dt>Service received ${esc(dateLabel(receipt.date))}</dt><dd>Line ${receipt.lineIndex + 1}, ${esc(ledgerName(receipt.sourceLedgerId))}. Reference <span class="code">${esc(receipt.reference)}</span>.</dd>`).join('')}</dl>` : '';
-  return `<div class="subsection itc-history"><h2>Review history</h2>${records.length ? `<div class="details-list">${records.map(record => `<details data-itc-record="${esc(record.id)}"><summary><span class="date-cell">${esc(dateLabel(record.date))}</span><span>${esc(ACTIONS[record.action])}</span><small class="code">${esc(record.reference)}</small><span class="itc-amount">₹${money(total(record.components))}</span></summary><p>${esc(record.evidence.basis)}</p><p>Evidence <span class="code">${esc(record.evidence.documentReference)}</span></p>${serviceReceipts(record.evidence.serviceReceipts)}${statement(record.evidence.statement)}<div class="table-scroll"><table><caption>Accounting entry</caption><thead><tr><th>Ledger</th><th>Side</th><th class="figure">Amount ₹</th></tr></thead><tbody>${record.postingLines.map(line => `<tr><td>${esc(ledgerName(line.ledgerId))}</td><td>${esc(line.dc)}</td><td class="figure">${money(line.paise)}</td></tr>`).join('') || '<tr><td colspan="3" class="quiet">Evidence recorded. No additional accounting entry was needed.</td></tr>'}</tbody></table></div><div class="table-scroll"><table><caption>Return working paper</caption><thead><tr><th>Table</th><th>Direction</th>${HEADS.map(head => `<th class="figure">${head.toUpperCase()} ₹</th>`).join('')}</tr></thead><tbody>${record.returnRows.map(row => `<tr><td>${esc(row.table)}</td><td>${row.sign < 0 ? 'Reduction' : 'Addition'}${row.table.startsWith('4D') ? ' (information only)' : ''}</td>${HEADS.map(head => `<td class="figure">${money(row[head + 'Paise'])}</td>`).join('')}</tr>`).join('') || '<tr><td colspan="7" class="quiet">No new return claim or reversal was recorded.</td></tr>'}</tbody></table></div>${record.voucherId ? `<p><a href="${book}/v/Journal/${encodeURIComponent(record.voucherId)}">Open accounting entry</a></p>` : ''}</details>`).join('')}</div>` : '<p class="empty">No dated ITC decisions are recorded for this document. Record one with the form above.</p>'}</div>`;
+  return `<div class="subsection itc-history"><h2>Review history</h2>${records.length ? `<div class="details-list">${records.map(record => `<details data-itc-record="${esc(record.id)}"><summary><span class="date-cell">${esc(dateLabel(record.date))}</span><span>${esc(ACTIONS[record.action])}</span><small class="code">${esc(record.reference)}</small><span class="itc-amount">₹${money(total(record.components))}</span><span data-itc-ims-record="${esc(record.id)}"></span></summary><p>${esc(record.evidence.basis)}</p><p>Evidence <span class="code">${esc(record.evidence.documentReference)}</span></p>${serviceReceipts(record.evidence.serviceReceipts)}${statement(record.evidence.statement)}<div class="table-scroll"><table><caption>Accounting entry</caption><thead><tr><th>Ledger</th><th>Side</th><th class="figure">Amount ₹</th></tr></thead><tbody>${record.postingLines.map(line => `<tr><td>${esc(ledgerName(line.ledgerId))}</td><td>${esc(line.dc)}</td><td class="figure">${money(line.paise)}</td></tr>`).join('') || '<tr><td colspan="3" class="quiet">Evidence recorded. No additional accounting entry was needed.</td></tr>'}</tbody></table></div><div class="table-scroll"><table><caption>Return working paper</caption><thead><tr><th>Table</th><th>Direction</th>${HEADS.map(head => `<th class="figure">${head.toUpperCase()} ₹</th>`).join('')}</tr></thead><tbody>${record.returnRows.map(row => `<tr><td>${esc(row.table)}</td><td>${row.sign < 0 ? 'Reduction' : 'Addition'}${row.table.startsWith('4D') ? ' (information only)' : ''}</td>${HEADS.map(head => `<td class="figure">${money(row[head + 'Paise'])}</td>`).join('')}</tr>`).join('') || '<tr><td colspan="7" class="quiet">No new return claim or reversal was recorded.</td></tr>'}</tbody></table></div>${record.voucherId ? `<p><a href="${book}/v/Journal/${encodeURIComponent(record.voucherId)}">Open accounting entry</a></p>` : ''}</details>`).join('')}</div>` : '<p class="empty">No dated ITC decisions are recorded for this document. Record one with the form above.</p>'}</div>`;
 }
 
 function bindReview(ctx) {
-  const { root, api, still, token, route, base, report, selected, book, esc, money, flashKey } = ctx;
+  const { root, api, still, token, route, base, report, selected, book, esc, money, flashKey, imsCache, companyPath } = ctx;
   const form = root.querySelector('#itc-review');
   const error = root.querySelector('[data-itc-error]');
   const saveButton = form.querySelector('button[type=submit]');
@@ -193,7 +225,9 @@ function bindReview(ctx) {
   form.addEventListener('input', () => { delete form.dataset.requestId; error.textContent = ''; updateTotal(); });
   form.elements.statementId.addEventListener('change', () => {
     const statement = chosenStatement();
-    form.querySelector('[data-itc-statement-status]').textContent = statement ? `${statement.matchStatus || 'Saved document'} in the statement for ${statement.period}. ITC ${statement.availability === 'N' ? 'not available' : statement.availability === 'Y' ? 'available in the statement' : 'not specified'}.${statement.reason ? ' ' + statement.reason : ''}` : 'Use the separate evidence reference and statutory review recorded above.';
+    const statusLine = form.querySelector('[data-itc-statement-status]');
+    statusLine.textContent = statement ? `${statement.matchStatus || 'Saved document'} in the statement for ${statement.period}. ITC ${statement.availability === 'N' ? 'not available' : statement.availability === 'Y' ? 'available in the statement' : 'not specified'}.${statement.reason ? ' ' + statement.reason : ''}` : 'Use the separate evidence reference and statutory review recorded above.';
+    if (IMS_FLAG[statement?.ims?.action]) statusLine.insertAdjacentHTML('afterbegin', `${imsPill(statement.ims.action)} ${statement.ims.action === 'reject' ? 'Rejected' : 'Kept pending'} in IMS${statement.ims.at ? ` on ${esc(dateLabel(statement.ims.at))}` : ''}${statement.ims.reason ? `: ${esc(statement.ims.reason)}` : ''}. This document is not available credit. `);
     updateTotal();
   });
   mode();
@@ -202,6 +236,13 @@ function bindReview(ctx) {
     candidates = result.matches || [];
     form.elements.statementId.innerHTML = '<option value="">Separate documented evidence</option>' + candidates.map((match, index) => `<option value="${index}">${esc(match.period)}, ${esc(match.number || selected.supplierInvoiceNumber)}, ${esc(match.matchStatus)}, ${match.availability === 'N' ? 'ITC not available' : esc(match.fileName || match.rowKey)}</option>`).join('');
     form.querySelector('[data-itc-statement-status]').textContent = candidates.length ? 'Choose the saved supplier document used for this review.' : 'No saved statement document matches this invoice. Record separate evidence to review it.';
+    if (selected.registrationId) Promise.all(candidates.map(async match => {
+      if (!match.ims) match.ims = (await imsRows(api, companyPath, imsCache, selected.registrationId, match.id)).get(match.rowKey) || null;
+    })).then(() => {
+      if (!still(token) || !form.isConnected) return;
+      [...form.elements.statementId.options].slice(1).forEach((option, index) => { const flag = IMS_FLAG[candidates[index]?.ims?.action]; if (flag && !option.textContent.endsWith(flag[1])) option.textContent += `, ${flag[1]}`; });
+      if (chosenStatement()) form.elements.statementId.dispatchEvent(new Event('change'));
+    });
   }).catch(failure => { if (still(token) && form.isConnected) form.querySelector('[data-itc-statement-status]').textContent = `Saved statement references could not be loaded: ${failure.message}`; });
   form.addEventListener('submit', async event => {
     event.preventDefault();

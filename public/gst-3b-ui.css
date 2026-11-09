@@ -1,1 +1,27 @@
 /* Styles for gst-3b-ui. Shared primitives live in ledgercraft.css; only screen-specific rules belong here. */
+
+/* Header entries: tax heads sit four abreast inside each fieldset. */
+.gstr3b-groups { display: grid; gap: 14px; margin-top: 10px; }
+.gstr3b-heads { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 18px; }
+.gstr3b .field-note + .gstr3b-heads { margin-top: 2px; }
+.gstr3b input[aria-invalid="true"] { border-color: var(--red); background: var(--red-soft); }
+.gstr3b kbd { font-size: 12px; margin-left: 6px; opacity: .8; }
+
+/* The download waits for a working that ran without errors. */
+.button[aria-disabled="true"] { opacity: .5; pointer-events: none; }
+
+/* Portal tables. */
+.gstr3b-verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0 0; max-width: 70ch; }
+.gstr3b-tables h3 { margin: 28px 0 4px; font-size: 16px; }
+.gstr3b-tables h4 { margin: 22px 0 4px; font-size: 15px; }
+.gstr3b-tables h3 + .quiet, .gstr3b-tables .table-scroll + .quiet { margin-top: 8px; max-width: 70ch; }
+th.gstr3b-span { text-align: center; border-bottom: 1px solid var(--rule); color: var(--ink-2); font-weight: 500; }
+tr.gstr3b-group th { padding-top: 14px; font-weight: 600; color: var(--ink); background: transparent; }
+.gstr3b-steps { margin: 8px 0 0; padding-left: 1.6em; max-width: 70ch; }
+.gstr3b-steps li { margin: 4px 0; font-variant-numeric: tabular-nums; }
+.gstr3b-sources { margin: 8px 0 0; padding-left: 1.2em; }
+.gstr3b-sources li { margin: 4px 0; }
+
+@media (max-width: 760px) {
+  .gstr3b-heads { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

@@ -1,1 +1,57 @@
 /* Styles for users-ui. Shared primitives live in ledgercraft.css; only screen-specific rules belong here. */
+
+/* Signed-in user on the cover, above the theme and shortcut buttons. */
+.cover-user { display: grid; gap: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--cover-active); }
+.cover-user-name { color: var(--cover-ink); font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.cover-user-role { color: var(--cover-ink-2); font-size: 13px; }
+.cover-sign-out { justify-self: start; margin-top: 4px; min-height: 28px; padding: 0; background: transparent; border: 0; color: var(--cover-ink); font-size: 13px; font-weight: 400; text-decoration: underline; text-decoration-color: var(--cover-ink-2); text-underline-offset: .18em; }
+.cover-sign-out:hover { background: transparent; text-decoration-color: currentColor; }
+.cover-sign-out:focus-visible { outline-color: var(--cover-ink); }
+@media (max-width: 760px) {
+  .cover-user { padding: 0 8px 0 0; border: 0; grid-auto-flow: column; align-items: center; gap: 8px; }
+  .cover-user-role { display: none; }
+  .cover-sign-out { margin: 0; }
+}
+
+/* Sign-in and Users pages. */
+.sign-in { max-width: 26rem; }
+.users-table th[scope="row"] { font-weight: 500; }
+.users-table td:last-child { width: 1%; white-space: nowrap; }
+.users-roles { max-width: 70ch; margin-top: 20px; }
+#user-edit form + form { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--rule); }
+#user-edit h3 { margin: 0; font-size: 15px; }
+
+/*
+ * Roles on screen. app.js sets data-role on <html> only while users exist. The server refuses
+ * these writes anyway; the controls are hidden rather than disabled so nobody meets a dead button.
+ * Viewers read reports and download them, so filters, periods, print and CSV stay.
+ */
+html[data-role="viewer"] .sheet form:not(.toolbar):not(.period-control):not([role="search"]):not(#numbering-form):not(.lock-form):not(#gst-registration):not(#gst-turnover):not(#gst-irp-policy):not(#stock-item-settings):not(#stock-integration):not(#gstr3b-header),
+html[data-role="viewer"] .new-voucher-menu,
+html[data-role="viewer"] .sheet button.danger,
+html[data-role="viewer"] .sheet a[href$="/gst-invoice"],
+html[data-role="viewer"] [data-confirm-bank-match],
+html[data-role="viewer"] [data-import-reviewed],
+html[data-role="viewer"] [data-amendment-save],
+html[data-role="viewer"] [data-new-item],
+html[data-role="viewer"] [data-new-party],
+html[data-role="viewer"] [data-tally-gst-activate],
+html[data-role="viewer"] [data-activate-tally-bills],
+html[data-role="viewer"] [data-activate-tally-stock],
+html[data-role="viewer"] #book-import,
+html[data-role="accountant"] #book-import { display: none !important; }
+
+/* Settings forms show the current settings, so a viewer keeps reading them without the buttons that save.
+   The GSTR-3B header only works out the return, so a viewer keeps it and loses only its settings save. */
+html[data-role="viewer"] #gst-registration button,
+html[data-role="viewer"] #gst-turnover button,
+html[data-role="viewer"] #gst-irp-policy button,
+html[data-role="viewer"] #stock-item-settings button,
+html[data-role="viewer"] #stock-integration button,
+html[data-role="viewer"] [data-gstr3b-save-settings] { display: none !important; }
+
+/* Period locks and voucher numbering stay readable; only the owner sees their save and unlock buttons. */
+html[data-role="viewer"] #numbering-form button,
+html[data-role="viewer"] .lock-form button,
+html[data-role="accountant"] #numbering-form button,
+html[data-role="accountant"] .lock-form button { display: none !important; }

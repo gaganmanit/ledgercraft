@@ -1,4 +1,5 @@
 import { formatINR, parseRupees } from "/money.js";
+import { balancesFromTrial, createLedgerDirectory, installLedgerPicker, ledgerControl, notifyDirectory } from "/ledger-picker.js";
 
 const dateLabel = value => /^\d{4}-\d{2}-\d{2}$/.test(value || "") ? value.split("-").reverse().join("-") : value || "—";
 const rupees = value => (value / 100).toFixed(2);
@@ -8,6 +9,74 @@ const stampLabel = at => { const when = new Date(at); return Number.isNaN(when.g
 function signedRupees(value) {
   const input = String(value || "").trim();
   return (input.startsWith("-") ? -1 : 1) * parseRupees(input.replace(/^[+-]/, ""));
+}
+
+/* Vouchers passed from a statement row. Money in defaults to a Receipt and money out to a Payment; Contra and Journal stay available. */
+const STATEMENT_TYPES = ["Receipt", "Payment", "Contra", "Journal"];
+const defaultType = paise => paise > 0 ? "Receipt" : "Payment";
+const typesFor = paise => paise > 0 ? ["Receipt", "Contra", "Journal"] : ["Payment", "Contra", "Journal"];
+const normalReference = value => String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+/* The narration the server writes when none is typed: the bank description, plus its reference when the description does not already carry it. */
+function rowNarration(row) {
+  const reference = row.reference && !normalReference(row.narration).includes(normalReference(row.reference)) ? `Ref ${row.reference}` : "";
+  return [row.narration, reference].filter(Boolean).join(" ").trim().slice(0, 280);
+}
+const dayGap = days => days === 0 ? "same day" : `${plural(days, "day")} apart`;
+const isRegexPattern = pattern => /^\/(.+)\/([imsu]*)$/s.test(String(pattern || "").trim());
+const readJson = key => { try { return JSON.parse(sessionStorage.getItem(key) || "null"); } catch { return null; } };
+const writeJson = (key, value) => { try { if (value === null || value === undefined) sessionStorage.removeItem(key); else sessionStorage.setItem(key, JSON.stringify(value)); } catch { /* storage full or unavailable */ } };
+const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+function base64Of(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+}
+
+/* The same contract as showAlert in app.js: one message per form, next to it, focused so that assistive technology reads it. */
+function showAlert(message, form) {
+  let alert = form.querySelector("[data-form-error]");
+  if (!alert) {
+    alert = document.createElement("p");
+    alert.className = "form-message alert";
+    alert.setAttribute("role", "alert");
+    alert.setAttribute("tabindex", "-1");
+    alert.dataset.formError = "1";
+    const heading = form.querySelector(":scope > h2, :scope > h3");
+    if (heading) heading.after(alert); else form.prepend(alert);
+  }
+  alert.textContent = message;
+  alert.scrollIntoView({ block: "nearest" });
+  alert.focus({ preventScroll: true });
+}
+function clearAlert(form) {
+  const alert = form.querySelector("[data-form-error]");
+  if (alert) alert.textContent = "";
+}
+function focusNext(form, from) {
+  const controls = [...form.querySelectorAll("input, select, textarea, button")].filter(el => !el.disabled && el.offsetParent !== null && el.getAttribute("aria-hidden") !== "true");
+  const next = controls[controls.indexOf(from) + 1];
+  if (next) next.focus();
+  /* Only text-like fields have a selection; select() on a date field throws in some engines. */
+  if (next && next.tagName === "INPUT" && ["text", "search", "tel", "url", "email", "password", ""].includes(next.getAttribute("type") || "")) next.select();
+  return Boolean(next);
+}
+/* Return moves to the next field and Command or Control with Return saves. The ledger picker handles its own Return. */
+function returnMoves(event, form) {
+  if (event.key !== "Enter" || event.defaultPrevented || event.altKey || event.shiftKey) return;
+  if (event.metaKey || event.ctrlKey) { event.preventDefault(); form.requestSubmit(); return; }
+  if (event.target.matches("input:not([type=submit]):not([type=button]):not([type=file]), select")) { event.preventDefault(); focusNext(form, event.target); }
+}
+function groupPath(company, groupId) {
+  const names = [];
+  const seen = new Set();
+  let group = company.groups.find(item => item.id === groupId);
+  while (group && !seen.has(group.id)) {
+    names.unshift(group.name);
+    seen.add(group.id);
+    group = company.groups.find(item => item.id === group.parentId);
+  }
+  return names.join(" / ");
 }
 
 export async function viewReconciliation(route, token, ui) {
@@ -43,14 +112,64 @@ export async function viewReconciliation(route, token, ui) {
       for (const button of controls) button.disabled = false;
     }
   };
-  const shared = { ...ui, base, book, token, route, money, postingLink, render, errorAt, refresh, save };
+  const shared = { ...ui, base, book, token, route, flashKey, money, postingLink, render, errorAt, refresh, save };
   if (route.name === "bank-reconciliation") await bankWorkspace(shared);
   else await billWorkspace(shared);
   return true;
 }
 
+/**
+ * Ledgers for the pickers on this screen: every ledger for bank rules, and every ledger except the
+ * statement's own bank for a voucher from a statement row. A ledger created from one picker appears in all.
+ */
+function ledgerBook(ctx, company) {
+  const { api, esc, route, still, token, root } = ctx;
+  const entry = account => ({ id: account.id, name: account.name, groupId: account.groupId, path: groupPath(company, account.groupId) });
+  const groups = company.groups.map(group => ({ id: group.id, path: groupPath(company, group.id) })).sort((a, b) => a.path.localeCompare(b.path));
+  const all = createLedgerDirectory({ ledgers: company.ledgers.map(entry), groups });
+  const banks = new Map();
+  const forBank = bankId => {
+    if (!banks.has(bankId)) banks.set(bankId, createLedgerDirectory({ ledgers: all.ledgers.filter(item => item.id !== bankId), groups, balances: all.balances }));
+    return banks.get(bankId);
+  };
+  const options = (selected, exclude = "") => company.ledgers.filter(account => account.id !== exclude)
+    .map(account => `<option value="${esc(account.id)}"${account.id === selected ? " selected" : ""}>${esc(account.name)}</option>`).join("");
+  const createLedger = async ({ name, groupId }) => {
+    const saved = await api(`/api/companies/${encodeURIComponent(route.id)}/ledgers`, { method: "POST", body: { name, groupId, openingPaise: 0, openingDc: "Dr" } });
+    const account = saved.ledger || saved.company?.ledgers?.find(item => item.name.toLowerCase() === name.trim().toLowerCase());
+    if (!account) throw new Error("The ledger was saved but could not be found. Reload the page to use it.");
+    if (!company.ledgers.some(item => item.id === account.id)) company.ledgers.push(account);
+    for (const directory of [all, ...banks.values()]) if (!directory.ledgers.some(item => item.id === account.id)) directory.ledgers.push(entry(account));
+    for (const select of root.querySelectorAll("select[data-ledger-select]")) {
+      if (![...select.options].some(option => option.value === account.id)) select.insertAdjacentHTML("beforeend", `<option value="${esc(account.id)}">${esc(account.name)}</option>`);
+    }
+    return account;
+  };
+  let balancesRequested = false;
+  const loadBalances = () => {
+    if (balancesRequested) return;
+    balancesRequested = true;
+    const to = new Date().toISOString().slice(0, 10);
+    api(`/api/companies/${encodeURIComponent(route.id)}/reports/trial-balance?from=${encodeURIComponent(company.booksFrom)}&to=${encodeURIComponent(to < company.booksFrom ? company.booksFrom : to)}`)
+      .then(report => {
+        if (!still(token)) return;
+        const balances = balancesFromTrial(report);
+        for (const directory of [all, ...banks.values()]) { directory.balances = balances; notifyDirectory(directory); }
+      })
+      .catch(() => { /* Balances are a convenience; the picker works without them. */ });
+  };
+  const install = (select, directory, afterChoose) => {
+    installLedgerPicker(select, { directory, esc, formatINR, createLedger, afterChoose });
+    loadBalances();
+  };
+  const name = id => company.ledgers.find(account => account.id === id)?.name || "";
+  return { all, forBank, options, install, name };
+}
+
 async function bankWorkspace(ctx) {
   const { root, api, still, token, route, base, book, esc, render, readPeriod } = ctx;
+  const mastersRequest = api(`/api/companies/${encodeURIComponent(route.id)}/masters`);
+  mastersRequest.catch(() => { /* reported below when the page needs it */ });
   const report = await api(`${base}/bank${route.detail ? `?statementId=${encodeURIComponent(route.detail)}` : ""}`);
   if (!still(token)) return;
   /* With no statement chosen, open the most recent one so that the workspace shows its matches at once. */
@@ -62,13 +181,18 @@ async function bankWorkspace(ctx) {
     render(report.company, "Bank reconciliation", `<p class="empty">Create a bank or bank overdraft ledger first, then import its statement here. <a href="${book}/ledgers">Open ledgers</a></p>`, "Br");
     return;
   }
+  const { company: master } = await mastersRequest;
+  if (!still(token)) return;
+  const ledgers = ledgerBook(ctx, master);
   const period = readPeriod(report.company);
   const preferredBank = report.statement?.ledgerId || sessionStorage.getItem(`financer-bank-ledger:${route.id}`);
   const selectedBank = report.banks.some(bank => bank.id === preferredBank) ? preferredBank : report.banks[0].id;
   const statements = report.statements.filter(row => row.ledgerId === selectedBank);
-  render(report.company, "Bank reconciliation", `<div class="toolbar reconciliation-controls"><label>Bank ledger<select data-bank-ledger>${report.banks.map(bank => `<option value="${esc(bank.id)}"${bank.id === selectedBank ? " selected" : ""}>${esc(bank.name)}</option>`).join("")}</select></label>${statements.length ? `<label class="grow">Statement<select data-bank-statement><option value="">Choose an imported statement</option>${statements.map(statement => `<option value="${esc(statement.id)}"${statement.id === report.statement?.id ? " selected" : ""}>${esc(statement.name)}, ${dateLabel(statement.from)} to ${dateLabel(statement.to)}, ${plural(statement.rowCount, "row")}</option>`).join("")}</select></label>` : ""}${report.statement ? '<button type="button" class="ghost" data-reconciliation-print>Print reconciliation</button>' : ""}${statements.length ? "" : '<p class="quiet">No statement is imported for this bank yet. Import its CSV below to start reconciling.</p>'}</div>
-    <div class="details-list"><details class="reconciliation-import"${statements.length ? "" : " open"}><summary>Import bank statement CSV</summary><form id="bank-statement-import" class="form-grid">
-      <label class="wide">CSV file<input type="file" name="file" accept=".csv,text/csv" required></label>
+  const rulesOpen = Boolean(readJson(`financer-bank-rules-open:${route.id}`));
+  render(report.company, "Bank reconciliation", `<div class="toolbar reconciliation-controls"><label>Bank ledger<select data-bank-ledger>${report.banks.map(bank => `<option value="${esc(bank.id)}"${bank.id === selectedBank ? " selected" : ""}>${esc(bank.name)}</option>`).join("")}</select></label>${statements.length ? `<label class="grow">Statement<select data-bank-statement><option value="">Choose an imported statement</option>${statements.map(statement => `<option value="${esc(statement.id)}"${statement.id === report.statement?.id ? " selected" : ""}>${esc(statement.name)}, ${dateLabel(statement.from)} to ${dateLabel(statement.to)}, ${plural(statement.rowCount, "row")}</option>`).join("")}</select></label>` : ""}${report.statement ? '<button type="button" class="ghost" data-reconciliation-print>Print reconciliation</button>' : ""}${statements.length ? "" : '<p class="quiet">No statement is imported for this bank yet. Import its CSV or XLSX file below to start reconciling.</p>'}</div>
+    <div class="details-list"><details class="reconciliation-import"${statements.length ? "" : " open"}><summary>Import bank statement <small>CSV or XLSX</small></summary><form id="bank-statement-import" class="form-grid">
+      <label class="wide">Statement file<input type="file" name="file" accept=".csv,.xlsx,text/csv,${XLSX_TYPE}" aria-describedby="bank-file-note" required></label>
+      <p class="form-note wide" id="bank-file-note">Choose a CSV file up to 2 MB or an Excel workbook (.xlsx) up to 5 MB. Ledgercraft reads the first worksheet of a workbook.</p>
       <label>Statement name<input name="name" maxlength="100" required></label>
       <label>Date format<select name="dateFormat"><option value="dd/mm/yyyy">Day/month/year, such as 31/03/2026</option><option value="yyyy-mm-dd">Year-month-day, such as 2026-03-31</option><option value="mm/dd/yyyy">Month/day/year, such as 03/31/2026</option></select></label>
       <label>Statement from<input name="from" type="date" value="${esc(period.from)}" min="${esc(report.company.booksFrom)}" required></label>
@@ -80,7 +204,8 @@ async function bankWorkspace(ctx) {
       <div class="actions wide"><button type="submit" disabled>Preview statement</button></div>
       <div data-statement-preview class="wide"></div>
       <p data-import-error class="form-message wide" role="alert"></p>
-    </form></details></div>
+    </form></details>
+    <details class="recon-rules" data-bank-rules${rulesOpen ? " open" : ""}><summary>Bank rules <small data-rules-count></small></summary><div data-rules-body><p class="quiet">Reading the bank rules.</p></div></details></div>
     <div data-bank-report></div>`, "Br");
   root.querySelector("[data-bank-ledger]").addEventListener("change", async event => {
     sessionStorage.setItem(`financer-bank-ledger:${route.id}`, event.target.value);
@@ -91,7 +216,8 @@ async function bankWorkspace(ctx) {
     location.hash = `${book}/bank-reconciliation${event.target.value ? "/" + encodeURIComponent(event.target.value) : ""}`;
   });
   bindStatementImport(ctx, report, selectedBank);
-  if (report.statement) bindBankReport(ctx, report);
+  bindBankRules(ctx, ledgers);
+  if (report.statement) bindBankReport(ctx, report, ledgers);
 }
 
 /** The statement with the latest closing date, preferring the bank ledger chosen last on this screen. */
@@ -107,11 +233,12 @@ function bindStatementImport(ctx, report, ledgerId) {
   const mapping = form.querySelector("[data-csv-mapping]");
   const preview = form.querySelector("[data-statement-preview]");
   const error = form.querySelector("[data-import-error]");
-  let csv = "", reviewed = null, importSequence = 0;
+  /* The file as the server reads it: { csv } for a CSV file, { xlsxBase64 } for an Excel workbook. */
+  let source = null, reviewed = null, importSequence = 0;
   const input = () => {
     const data = new FormData(form);
     const mode = data.get("amountMode");
-    return { ledgerId, name: data.get("name"), from: data.get("from"), to: data.get("to"), csv,
+    return { ledgerId, name: data.get("name"), from: data.get("from"), to: data.get("to"), ...source,
       openingPaise: signedRupees(data.get("opening")), closingPaise: signedRupees(data.get("closing")),
       dateFormat: data.get("dateFormat"), signedConvention: data.get("signedConvention"),
       mapping: { date: Number(data.get("mapDate")), narration: Number(data.get("mapNarration")), reference: Number(data.get("mapReference")),
@@ -120,21 +247,25 @@ function bindStatementImport(ctx, report, ledgerId) {
   form.addEventListener("input", () => { ++importSequence; reviewed = null; preview.innerHTML = ""; error.textContent = ""; });
   form.elements.file.addEventListener("change", async () => {
     const current = ++importSequence;
-    csv = ""; reviewed = null; mapping.innerHTML = ""; preview.innerHTML = "";
+    source = null; reviewed = null; mapping.innerHTML = ""; preview.innerHTML = "";
     form.querySelector('button[type="submit"]').disabled = true;
     try {
       const file = form.elements.file.files[0];
-      if (!file || file.size > 2_000_000) throw new Error("Choose a CSV file up to 2 MB");
-      const source = await file.text();
+      if (!file) throw new Error("Choose the bank statement as a CSV or XLSX file");
+      const xlsx = /\.xlsx$/i.test(file.name) || file.type === XLSX_TYPE;
+      if (xlsx && file.size > 5_000_000) throw new Error("Choose an XLSX workbook up to 5 MB");
+      if (!xlsx && file.size > 2_000_000) throw new Error("Choose a CSV file up to 2 MB");
+      const chosen = xlsx ? { xlsxBase64: base64Of(await file.arrayBuffer()) } : { csv: await file.text() };
       if (!still(token) || current !== importSequence) return;
-      csv = source;
-      const { headers, sample } = await api(`${base}/csv-columns`, { method: "POST", body: { csv } });
+      const { headers, sample, sourceFormat } = await api(`${base}/csv-columns`, { method: "POST", body: chosen });
       if (!still(token) || current !== importSequence) return;
-      form.elements.name.value = file.name.replace(/\.csv$/i, "");
+      source = chosen;
+      form.elements.name.value = file.name.replace(/\.(csv|xlsx)$/i, "");
       const guess = pattern => headers.findIndex(name => pattern.test(name));
-      const select = (name, label, chosen) => `<label>${label}<select name="${name}"><option value="-1">Not mapped</option>${headers.map((header, index) => `<option value="${index}"${index === chosen ? " selected" : ""}>${esc(header || "Column " + (index + 1))}</option>`).join("")}</select></label>`;
+      const select = (name, label, chosenIndex) => `<label>${label}<select name="${name}"><option value="-1">Not mapped</option>${headers.map((header, index) => `<option value="${index}"${index === chosenIndex ? " selected" : ""}>${esc(header || "Column " + (index + 1))}</option>`).join("")}</select></label>`;
       const debit = guess(/debit|withdrawal|paid out/i), credit = guess(/credit|deposit|paid in/i), signed = guess(/^amount$|signed amount/i), dateColumn = guess(/date/i);
-      mapping.innerHTML = `<fieldset><legend>Match the CSV columns</legend><div class="form-grid"><label>Amount columns<select name="amountMode"><option value="split"${debit >= 0 && credit >= 0 ? " selected" : ""}>Separate debit and credit columns</option><option value="signed"${debit < 0 || credit < 0 ? " selected" : ""}>One signed amount column</option></select></label>
+      const read = sourceFormat === "xlsx" ? '<p class="form-note">Read from the first worksheet of the workbook. Date cells arrive as dates, so any date format below reads them.</p>' : "";
+      mapping.innerHTML = `<fieldset><legend>Match the statement columns</legend>${read}<div class="form-grid"><label>Amount columns<select name="amountMode"><option value="split"${debit >= 0 && credit >= 0 ? " selected" : ""}>Separate debit and credit columns</option><option value="signed"${debit < 0 || credit < 0 ? " selected" : ""}>One signed amount column</option></select></label>
         <label data-signed-mapping>A positive amount means<select name="signedConvention"><option value="credit-positive">Money in</option><option value="debit-positive">Money out</option></select></label>
         ${select("mapDate", "Date column", dateColumn)}${select("mapReference", "Reference column", guess(/ref|utr|cheque|chq|transaction id/i))}
         ${select("mapNarration", "Description column", guess(/description|narration|particulars|details/i))}
@@ -164,9 +295,13 @@ function bindStatementImport(ctx, report, ledgerId) {
       const statement = result.statement;
       const difference = statement.closingPaise - statement.computedClosingPaise;
       const shown = Math.min(10, statement.rows.length);
-      preview.innerHTML = `<h3>Statement preview</h3><p>${plural(statement.rows.length, "transaction row")}.${statement.ignoredRows.length ? ` ${plural(statement.ignoredRows.length, "zero-movement row")} left out.` : ""}</p>
-        <p>${difference === 0 ? '<span class="pill ok">Agrees</span> The CSV movements reach the reported closing balance.' : `<span class="pill warn">Off by ₹ ${money(Math.abs(difference))}</span> Check the opening, the closing and the column mapping before you import.`}</p>
-        <table class="reconciliation-check-table"><tbody><tr><th scope="row">Opening ₹</th><td class="figure">${money(statement.openingPaise)}</td></tr><tr><th scope="row">Closing from CSV movements ₹</th><td class="figure">${money(statement.computedClosingPaise)}</td></tr><tr><th scope="row">Reported closing ₹</th><td class="figure">${money(statement.closingPaise)}</td></tr><tr class="total"><th scope="row">Difference ₹</th><td class="figure">${money(difference)}</td></tr></tbody></table>
+      /* Rows left out are either rows that move no money, or titles and summary lines around the statement table. */
+      const idle = statement.ignoredRows.filter(row => row.reason === "No money movement").length;
+      const outside = statement.ignoredRows.length - idle;
+      const leftOut = `${idle ? ` ${plural(idle, "row")} left out because ${idle === 1 ? "it moves" : "they move"} no money.` : ""}${outside ? ` ${plural(outside, "row")} left out because ${outside === 1 ? "it sits" : "they sit"} outside the statement table, such as titles or a closing line.` : ""}`;
+      preview.innerHTML = `<h3>Statement preview</h3><p>${plural(statement.rows.length, "transaction row")}${statement.sourceFormat === "xlsx" ? " from the first worksheet of the workbook" : ""}.${leftOut}</p>
+        <p>${difference === 0 ? '<span class="pill ok">Agrees</span> The statement movements reach the reported closing balance.' : `<span class="pill warn">Off by ₹ ${money(Math.abs(difference))}</span> Check the opening, the closing and the column mapping before you import.`}</p>
+        <table class="reconciliation-check-table"><tbody><tr><th scope="row">Opening ₹</th><td class="figure">${money(statement.openingPaise)}</td></tr><tr><th scope="row">Closing from statement movements ₹</th><td class="figure">${money(statement.computedClosingPaise)}</td></tr><tr><th scope="row">Reported closing ₹</th><td class="figure">${money(statement.closingPaise)}</td></tr><tr class="total"><th scope="row">Difference ₹</th><td class="figure">${money(difference)}</td></tr></tbody></table>
         <div class="table-scroll"><table><thead><tr><th>Date</th><th>Reference and description</th><th class="figure">Money in ₹</th><th class="figure">Money out ₹</th></tr></thead><tbody>${statement.rows.slice(0, 10).map(row => `<tr><td class="date-cell">${dateLabel(row.date)}</td><td><span class="code">${esc(row.reference)}</span><small>${esc(row.narration)}</small></td><td class="figure">${row.amountPaise > 0 ? money(row.amountPaise) : "—"}</td><td class="figure">${row.amountPaise < 0 ? money(-row.amountPaise) : "—"}</td></tr>`).join("")}</tbody></table></div>
         <p class="quiet">Showing the first ${shown} of ${plural(statement.rows.length, "row")}.</p><div class="actions"><button type="button" data-import-reviewed>Import for review</button></div>`;
       preview.querySelector("[data-import-reviewed]").addEventListener("click", async () => {
@@ -177,28 +312,174 @@ function bindStatementImport(ctx, report, ledgerId) {
         } catch (failure) { errorAt(error, failure); }
       });
     } catch (failure) { errorAt(error, failure); }
-    finally { button.disabled = !csv || !form.querySelector('[name="amountMode"]'); }
+    finally { button.disabled = !source || !form.querySelector('[name="amountMode"]'); }
   });
 }
 
-function bindBankReport(ctx, report) {
-  const { root, esc, money, postingLink, errorAt, save, refresh } = ctx;
+/**
+ * Bank rules: company-wide, checked in list order against each unmatched statement row's description.
+ * Edited in place and saved as a whole list. Unsaved edits are kept as a draft for this session.
+ */
+function bindBankRules(ctx, ledgers) {
+  const { root, api, still, token, route, base, esc, flashKey, refresh } = ctx;
+  const details = root.querySelector("[data-bank-rules]");
+  const body = details.querySelector("[data-rules-body]");
+  const count = details.querySelector("[data-rules-count]");
+  const openKey = `financer-bank-rules-open:${route.id}`, draftKey = `financer-bank-rules-draft:${route.id}`;
+  const FIELDS = new Set(["pattern", "ledgerId", "type", "narration"]);
+  let revision = 0, serverRules = [], rules = [], restored = false, dropped = false;
+  const clean = rule => ({ key: String(rule.key || rule.id || `new-${crypto.randomUUID().slice(0, 8)}`), id: rule.id || "", pattern: String(rule.pattern || ""), ledgerId: String(rule.ledgerId || ""), type: STATEMENT_TYPES.includes(rule.type) ? rule.type : "", narration: String(rule.narration || "") });
+  const comparable = list => JSON.stringify(list.map(rule => [rule.id, rule.pattern, rule.ledgerId, rule.type, rule.narration]));
+  const dirty = () => comparable(rules) !== comparable(serverRules);
+  const persist = () => writeJson(draftKey, dirty() ? { base: comparable(serverRules), rules } : null);
+  const describeCount = () => { count.textContent = `${plural(serverRules.length, "rule")}${dirty() ? ", unsaved changes" : ""}`; };
+  const kindNote = pattern => !pattern.trim() ? "Words from the bank description" : isRegexPattern(pattern) ? "Regular expression" : "Matches as a phrase or all its words";
+  const typeOptions = selected => `<option value="">From the row direction</option>${STATEMENT_TYPES.map(type => `<option value="${type}"${type === selected ? " selected" : ""}>${type}</option>`).join("")}`;
+  const rowHtml = (rule, index) => {
+    const id = `bank-rule-${esc(rule.key)}`, n = index + 1;
+    return `<tr data-rule-index="${index}">
+      <td class="recon-rule-priority">${n}</td>
+      <td><input name="pattern" class="code" value="${esc(rule.pattern)}" maxlength="200" autocomplete="off" spellcheck="false" aria-label="Description pattern for rule ${n}" aria-describedby="${id}-kind" placeholder="ACME TRADERS or /^NEFT.*ACME/"><small id="${id}-kind" data-rule-kind>${kindNote(rule.pattern)}</small></td>
+      <td><div class="recon-ledger-field"><label class="sr" for="${id}-ledger">Ledger for rule ${n}</label><select id="${id}-ledger" name="ledgerId" data-ledger-select><option value="">Choose a ledger</option>${ledgers.options(rule.ledgerId)}</select></div></td>
+      <td><select name="type" aria-label="Voucher type for rule ${n}">${typeOptions(rule.type)}</select></td>
+      <td><input name="narration" value="${esc(rule.narration)}" maxlength="280" autocomplete="off" aria-label="Narration template for rule ${n}" placeholder="{narration}"></td>
+      <td class="recon-rule-actions"><button type="button" class="ghost" data-rule-move="-1" aria-label="Move rule ${n} up"${index === 0 ? " disabled" : ""}>Up</button><button type="button" class="ghost" data-rule-move="1" aria-label="Move rule ${n} down"${index === rules.length - 1 ? " disabled" : ""}>Down</button><button type="button" class="danger" data-rule-remove aria-label="Remove rule ${n}">Remove</button></td></tr>`;
+  };
+  const paint = focus => {
+    body.innerHTML = `<form id="bank-rules-form" class="recon-rules-form" novalidate>
+      <p class="form-note">A rule suggests a ledger for any unmatched statement row whose description it matches. The first matching rule wins, so the order is the priority.</p>
+      <p class="form-note">Plain text matches as a phrase, or when all its words appear in any order. Case and punctuation do not matter. Write a regular expression between slashes, such as <span class="code">/^NEFT.*ACME/</span>.</p>
+      <p class="form-note">A narration template can use <span class="code">{narration}</span>, <span class="code">{reference}</span>, <span class="code">{date}</span> and <span class="code">{amount}</span>. Leave it blank to use the bank description.</p>
+      ${restored ? '<p class="notice">Your unsaved rule changes were restored. <button type="button" class="link" data-rules-discard>Discard changes</button></p>' : ""}
+      ${dropped ? '<p class="notice">The saved rules changed after your last edits here, so those edits were discarded.</p>' : ""}
+      <div class="table-scroll"><table class="recon-rules-table"><thead><tr><th>Priority</th><th>Description pattern</th><th>Ledger</th><th>Voucher type</th><th>Narration template</th><th><span class="sr">Order and remove</span></th></tr></thead>
+      <tbody>${rules.map(rowHtml).join("") || '<tr><td colspan="6" class="quiet">No bank rules yet. Add one here, or tick Remember this narration as a rule when you create a voucher from a statement row.</td></tr>'}</tbody></table></div>
+      <div class="actions"><button type="button" class="ghost" data-rule-add>Add rule</button><button type="submit">Save rules <kbd aria-hidden="true">⌘↩</kbd></button></div>
+    </form>`;
+    const form = body.querySelector("form");
+    for (const select of form.querySelectorAll("select[name=ledgerId]")) ledgers.install(select, ledgers.all, chosen => focusNext(form, ledgerControl(chosen.parentElement)));
+    form.addEventListener("keydown", event => returnMoves(event, form));
+    const sync = event => {
+      const row = event.target.closest("[data-rule-index]");
+      if (!row || !FIELDS.has(event.target.name)) return;
+      const rule = rules[Number(row.dataset.ruleIndex)];
+      rule[event.target.name] = event.target.value;
+      if (event.target.name === "pattern") row.querySelector("[data-rule-kind]").textContent = kindNote(rule.pattern);
+      delete form.dataset.requestId;
+      persist(); describeCount();
+    };
+    form.addEventListener("input", sync);
+    form.addEventListener("change", sync);
+    form.addEventListener("click", event => {
+      const discard = event.target.closest("[data-rules-discard]");
+      if (discard) { rules = serverRules.map(clean); restored = false; persist(); describeCount(); paint("[data-rule-add]"); return; }
+      if (event.target.closest("[data-rule-add]")) {
+        rules.push(clean({}));
+        persist(); describeCount(); paint(`[data-rule-index="${rules.length - 1}"] [name=pattern]`);
+        return;
+      }
+      const move = event.target.closest("[data-rule-move]");
+      if (move) {
+        const from = Number(move.closest("[data-rule-index]").dataset.ruleIndex), to = from + Number(move.dataset.ruleMove);
+        if (to < 0 || to >= rules.length) return;
+        [rules[from], rules[to]] = [rules[to], rules[from]];
+        persist(); describeCount();
+        const edge = to === 0 || to === rules.length - 1;
+        paint(`[data-rule-index="${to}"] [data-rule-move="${edge ? -move.dataset.ruleMove : move.dataset.ruleMove}"]`);
+        return;
+      }
+      const remove = event.target.closest("[data-rule-remove]");
+      if (remove) {
+        const index = Number(remove.closest("[data-rule-index]").dataset.ruleIndex);
+        rules.splice(index, 1);
+        persist(); describeCount();
+        paint(rules.length ? `[data-rule-index="${Math.min(index, rules.length - 1)}"] [data-rule-remove]` : "[data-rule-add]");
+      }
+    });
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      if (form.dataset.busy === "true") return;
+      clearAlert(form);
+      for (const [index, rule] of rules.entries()) {
+        const row = form.querySelector(`[data-rule-index="${index}"]`);
+        if (!rule.pattern.trim()) { showAlert(`Rule ${index + 1} needs a pattern. Type words from the bank description, or a regular expression between slashes.`, form); row.querySelector("[name=pattern]").focus(); return; }
+        if (!rule.ledgerId) { showAlert(`Choose the ledger for rule ${index + 1}.`, form); ledgerControl(row)?.focus(); return; }
+      }
+      form.dataset.busy = "true";
+      form.dataset.requestId ||= crypto.randomUUID();
+      const buttons = [...form.querySelectorAll("button")];
+      for (const button of buttons) button.disabled = true;
+      try {
+        const saved = await api(`${base}/bank-rules`, { method: "PUT", body: { revision, requestId: form.dataset.requestId,
+          rules: rules.map(rule => ({ ...(rule.id ? { id: rule.id } : {}), pattern: rule.pattern.trim(), ledgerId: rule.ledgerId, ...(rule.type ? { type: rule.type } : {}), ...(rule.narration.trim() ? { narration: rule.narration.trim() } : {}) })) } });
+        if (!still(token)) return;
+        writeJson(draftKey, null);
+        sessionStorage.setItem(flashKey, saved.rules.length ? `Bank rules saved. ${plural(saved.rules.length, "rule")}, checked in the order shown.` : "Bank rules saved. No rules remain.");
+        await refresh();
+      } catch (failure) {
+        showAlert(failure.message, form);
+      } finally {
+        form.dataset.busy = "false";
+        for (const button of buttons) if (button.isConnected) button.disabled = false;
+        for (const button of form.querySelectorAll("[data-rule-move]")) { const index = Number(button.closest("[data-rule-index]").dataset.ruleIndex); button.disabled = index + Number(button.dataset.ruleMove) < 0 || index + Number(button.dataset.ruleMove) >= rules.length; }
+      }
+    });
+    if (focus) form.querySelector(focus)?.focus();
+  };
+  details.addEventListener("toggle", () => writeJson(openKey, details.open || null));
+  (async () => {
+    try {
+      const data = await api(`${base}/bank-rules`);
+      if (!still(token)) return;
+      revision = data.revision;
+      /* A rule whose ledger was deleted comes back without a name; it shows with no ledger chosen until one is picked. */
+      serverRules = data.rules.map(rule => clean({ ...rule, ledgerId: rule.ledgerName ? rule.ledgerId : "" }));
+      const draft = readJson(draftKey);
+      if (draft && draft.base === comparable(serverRules) && Array.isArray(draft.rules)) { rules = draft.rules.map(clean); restored = dirty(); }
+      else { dropped = Boolean(draft); rules = serverRules.map(clean); writeJson(draftKey, null); }
+      describeCount();
+      paint();
+    } catch (failure) {
+      if (!still(token)) return;
+      body.innerHTML = `<p class="form-message alert" role="alert">${esc(failure.message)}</p>`;
+    }
+  })();
+}
+
+function bindBankReport(ctx, report, ledgers) {
+  const { root, api, still, token, route, base, book, esc, money, postingLink, errorAt, save, refresh } = ctx;
   const area = root.querySelector("[data-bank-report]");
+  const statement = report.statement;
   const totals = report.totals;
   const openRows = report.rows.filter(row => !row.matched).length;
   const openBooks = report.bookEntries.filter(row => !row.matched).length;
-  const bankName = report.banks.find(bank => bank.id === report.statement.ledgerId)?.name || "";
-  area.innerHTML = `<section class="reconciliation-section"><h2>${esc(report.statement.name)}</h2><p class="quiet">${bankName ? `Bank ledger ${esc(bankName)}. ` : ""}Statement period ${dateLabel(report.statement.from)} to ${dateLabel(report.statement.to)}.</p>
+  const bankName = report.banks.find(bank => bank.id === statement.ledgerId)?.name || "";
+  const rowIndex = new Map(report.rows.map((row, index) => [row.id, index]));
+  const rowsById = new Map(report.rows.map(row => [row.id, row]));
+  const draftKey = `financer-bank-voucher-drafts:${route.id}:${statement.id}`;
+  const savedKey = `financer-bank-voucher-saved:${route.id}`;
+  /* Open voucher forms and their unsaved values, by statement row. Rows matched since are dropped. */
+  const drafts = Object.fromEntries(Object.entries(readJson(draftKey) || {}).filter(([id, draft]) => rowsById.has(id) && !rowsById.get(id).matched && draft && typeof draft === "object"));
+  const persist = () => writeJson(draftKey, Object.keys(drafts).length ? drafts : null);
+  persist();
+  const saved = readJson(savedKey);
+  writeJson(savedKey, null);
+  const justSaved = saved?.statementId === statement.id ? saved : null;
+  const savedNotice = justSaved ? `<p class="status recon-saved" role="status" tabindex="-1">${esc(justSaved.type)} <a class="code" href="${book}/v/${encodeURIComponent(justSaved.type)}/${esc(justSaved.voucherId)}">${esc(justSaved.number)}</a> passed for ₹ ${money(justSaved.paise)} on ${dateLabel(justSaved.date)} and matched to the bank row dated ${dateLabel(justSaved.rowDate)}.${justSaved.rule ? ` Rule learned: <span class="code">${esc(justSaved.rule.pattern)}</span> posts to ${esc(justSaved.rule.ledgerName)}.` : ""}${justSaved.ruleNote ? ` No rule was saved. ${esc(justSaved.ruleNote)}.` : ""}</p>` : "";
+  const source = statement.sourceFormat === "xlsx" ? "Excel workbook (.xlsx), first worksheet" : "CSV file";
+  area.innerHTML = `<section class="reconciliation-section"><h2>${esc(statement.name)}</h2>
+    <dl class="kv recon-statement-facts">${bankName ? `<dt>Bank ledger</dt><dd>${esc(bankName)}</dd>` : ""}<dt>Statement period</dt><dd>${dateLabel(statement.from)} to ${dateLabel(statement.to)}</dd><dt>Source</dt><dd>${source}</dd>${statement.importedAt ? `<dt>Imported</dt><dd>${esc(stampLabel(statement.importedAt))}</dd>` : ""}<dt>Rows</dt><dd>${plural(statement.rowCount, "transaction row")}${statement.ignoredCount ? `, ${statement.ignoredCount} left out` : ""}</dd></dl>
+    ${savedNotice}
     <div class="summary-strip"><div><span>Confirmed matches</span><strong>${report.matches.length}</strong></div><div><span>Statement rows open</span><strong>${openRows}</strong></div><div><span>Book transactions uncleared</span><strong>${openBooks}</strong></div><div><span>Unexplained difference</span><strong>₹ ${money(totals.differencePaise)}</strong><small>${totals.differencePaise === 0 ? '<span class="pill ok">Reconciled</span>' : '<span class="pill warn">Not reconciled</span> Review the open items below.'}</small></div></div>
     <div class="two reconciliation-balance-grid"><section><h3>Opening comparison</h3><table><tbody><tr><th scope="row">Book opening ₹</th><td class="figure">${money(totals.openingBookPaise)}</td></tr><tr><th scope="row">Expected bank opening after pending items ₹</th><td class="figure">${money(totals.expectedOpeningBankPaise)}</td></tr><tr><th scope="row">Statement opening ₹</th><td class="figure">${money(totals.statementOpeningPaise)}</td></tr><tr class="total"><th scope="row">Opening difference ₹</th><td class="figure">${money(totals.openingDifferencePaise)}</td></tr></tbody></table></section>
-    <section><h3>Closing comparison</h3><table><tbody><tr><th scope="row">Book closing ₹</th><td class="figure">${money(totals.closingBookPaise)}</td></tr><tr><th scope="row">Less uncleared book movements ₹</th><td class="figure">${money(totals.unmatchedBookPaise)}</td></tr><tr><th scope="row">Add bank movements awaiting books ₹</th><td class="figure">${money(totals.unmatchedStatementPaise)}</td></tr><tr><th scope="row">Expected bank closing ₹</th><td class="figure">${money(totals.expectedBankPaise)}</td></tr><tr><th scope="row">Statement closing ₹</th><td class="figure">${money(totals.statementClosingPaise)}</td></tr><tr class="total"><th scope="row">Unexplained difference ₹</th><td class="figure">${money(totals.differencePaise)}</td></tr><tr><th scope="row">CSV arithmetic difference ₹</th><td class="figure">${money(totals.statementArithmeticDifferencePaise)}</td></tr></tbody></table></section></div>
+    <section><h3>Closing comparison</h3><table><tbody><tr><th scope="row">Book closing ₹</th><td class="figure">${money(totals.closingBookPaise)}</td></tr><tr><th scope="row">Less uncleared book movements ₹</th><td class="figure">${money(totals.unmatchedBookPaise)}</td></tr><tr><th scope="row">Add bank movements awaiting books ₹</th><td class="figure">${money(totals.unmatchedStatementPaise)}</td></tr><tr><th scope="row">Expected bank closing ₹</th><td class="figure">${money(totals.expectedBankPaise)}</td></tr><tr><th scope="row">Statement closing ₹</th><td class="figure">${money(totals.statementClosingPaise)}</td></tr><tr class="total"><th scope="row">Unexplained difference ₹</th><td class="figure">${money(totals.differencePaise)}</td></tr><tr><th scope="row">Statement arithmetic difference ₹</th><td class="figure">${money(totals.statementArithmeticDifferencePaise)}</td></tr></tbody></table></section></div>
     <div class="details-list"><details class="reconciliation-opening"><summary>Transactions pending at the beginning of this statement</summary><form id="bank-opening-pending"><p class="form-note">Tick the older book postings that had not reached the bank by the statement’s opening date.</p><div class="check-group" data-opening-choices></div><div class="actions"><button type="submit">Save opening pending items</button></div><p data-opening-error class="form-message" role="alert"></p></form></details></div>
     <div class="toolbar reconciliation-find"><label class="grow">Find a date, reference or description<input type="search" data-bank-search placeholder="Searches both sides and confirmed matches"></label></div>
-    <div class="reconciliation-match-bar"><div class="reconciliation-selected" data-selected-totals aria-live="polite"></div><button type="button" data-confirm-bank-match disabled>Confirm selected match</button></div><p data-match-error class="form-message" role="alert"></p>
+    <div class="reconciliation-match-bar"><div class="reconciliation-selected" data-selected-totals aria-live="polite"></div><div class="recon-match-actions"><button type="button" class="ghost" data-clear-selection hidden>Clear selection</button><button type="button" data-confirm-bank-match disabled>Confirm selected match</button></div></div><p data-match-error class="form-message" role="alert"></p>
     <div class="two reconciliation-match-grid"><section><h3>Statement rows awaiting match</h3><div data-statement-rows></div></section><section><h3>Book transactions awaiting clearance</h3><div data-book-rows></div></section></div>
     <section class="reconciliation-section"><h3>Confirmed matches</h3><div data-confirmed-matches></div><p data-unmatch-error class="form-message" role="alert"></p></section><button type="button" class="ghost" data-more-bank>Show 200 more rows</button>
     <div class="details-list"><details class="reconciliation-audit"><summary>Change history</summary><div data-audit-rows></div></details></div></section>`;
-  const selectedRows = new Set(), selectedBooks = new Set(), openingIds = new Set(report.statement.openingPendingVoucherIds);
+  const selectedRows = new Set(), selectedBooks = new Set(), openingIds = new Set(statement.openingPendingVoucherIds);
   let limit = 200;
   const query = () => area.querySelector("[data-bank-search]").value.trim().toLowerCase();
   const includes = row => !query() || [row.date, dateLabel(row.date), row.reference, row.number, row.narration].join(" ").toLowerCase().includes(query());
@@ -208,38 +489,176 @@ function bindBankReport(ctx, report) {
     const rowTotal = rows.reduce((total, row) => total + row.amountPaise, 0), bookTotal = entries.reduce((total, row) => total + row.amountPaise, 0);
     const sameDirection = new Set([...rows, ...entries].map(row => Math.sign(row.amountPaise))).size === 1;
     const target = area.querySelector("[data-selected-totals]");
-    if (!rows.length && !entries.length) target.innerHTML = '<span class="quiet">Tick bank rows and book transactions with the same total, or pick a suggested voucher.</span>';
+    /* Several bank rows may settle one voucher, one row several vouchers, or several of each. Match stays off until both totals agree to the paisa. */
+    if (!rows.length && !entries.length) target.innerHTML = '<span class="quiet">Tick bank rows and the book transactions they settle, one or several on each side. The two totals must agree before you can match them.</span>';
     else {
       const state = rows.length > 100 || entries.length > 100 ? '<span><span class="pill warn">Too many rows</span> Select up to 100 on each side.</span>'
         : rows.length && entries.length && !sameDirection ? '<span><span class="pill warn">Mixed directions</span> Choose money in on both sides, or money out on both sides.</span>'
           : rows.length && entries.length && rowTotal === bookTotal ? '<span class="pill ok">Totals agree</span>'
-            : rows.length && entries.length ? `<span class="pill warn">Differ by ₹ ${money(Math.abs(rowTotal - bookTotal))}</span>`
-              : `<span class="quiet">Now tick the matching ${rows.length ? "book transactions" : "bank rows"}.</span>`;
+            : rows.length && entries.length ? `<span><span class="pill warn">Totals must agree</span> They differ by ₹ ${money(Math.abs(rowTotal - bookTotal))}.</span>`
+              : `<span><span class="pill warn">Totals must agree</span> Now tick the matching ${rows.length ? "book transactions" : "bank rows"}.</span>`;
       target.innerHTML = `<span>${plural(rows.length, "bank row")} <strong class="figure">₹ ${money(rowTotal)}</strong></span><span>${plural(entries.length, "book transaction")} <strong class="figure">₹ ${money(bookTotal)}</strong></span>${state}`;
     }
+    area.querySelector("[data-clear-selection]").hidden = !rows.length && !entries.length;
     area.querySelector("[data-confirm-bank-match]").disabled = !rows.length || !entries.length || rowTotal !== bookTotal || !sameDirection || rows.length > 100 || entries.length > 100;
   };
+  const suggestionsHtml = row => {
+    const list = row.suggestions || [];
+    if (!list.length) return "";
+    return `<div class="recon-suggestions"><p class="recon-suggestions-title">${list.length === 1 ? "Book entry" : "Book entries"} for the same amount within 3 days</p><ul>${list.map(item => `<li class="reconciliation-candidate"><span class="recon-suggestion-entry">${postingLink(item)} <span class="date-cell">${dateLabel(item.date)}</span> <span class="quiet">${dayGap(item.dayDistance)}</span>${item.matchedReference ? ` <span class="pill ok">Reference <span class="code">${esc(item.matchedReference)}</span> in both</span>` : ""}${item.narration ? `<small>${esc(item.narration)}</small>` : ""}</span><button type="button" class="ghost" data-suggest-row="${esc(row.id)}" data-suggest-voucher="${esc(item.voucherId)}" aria-label="Match bank row ${row.sourceRow} with ${esc(item.number)}">Match</button></li>`).join("")}</ul></div>`;
+  };
+  /* A rule suggestion carries the row's Create voucher button, which opens the form filled from the rule. */
+  const ruleHtml = (row, create) => {
+    const rule = row.ruleSuggestion;
+    const asType = rule.type !== defaultType(row.amountPaise) ? ` as a ${esc(rule.type)}` : "";
+    return `<p class="recon-rule"><span>Rule: <span class="code">${esc(rule.pattern)}</span> posts to ${esc(rule.ledgerName)}${asType}.</span>${create}</p>`;
+  };
+  const formHtml = row => {
+    const draft = drafts[row.id];
+    const id = `bank-voucher-${esc(row.id)}`;
+    const types = typesFor(row.amountPaise);
+    return `<tr class="recon-voucher-row" data-voucher-row="${esc(row.id)}"><td colspan="3"><form class="recon-voucher-form" data-voucher-form="${esc(row.id)}" aria-labelledby="${id}-title" novalidate>
+      <h3 class="recon-form-title" id="${id}-title">Voucher for ₹ ${money(Math.abs(row.amountPaise))} ${row.amountPaise > 0 ? "received" : "paid"} on ${dateLabel(row.date)}</h3>
+      <div class="form-grid">
+        <div class="recon-ledger-field wide"><label for="${id}-ledger">Ledger on the other side</label><select id="${id}-ledger" name="ledgerId" data-ledger-select><option value="">Choose a ledger</option>${ledgers.options(draft.ledgerId, statement.ledgerId)}</select></div>
+        <label>Voucher type<select name="type">${types.map(type => `<option value="${type}"${type === draft.type ? " selected" : ""}>${type}</option>`).join("")}</select></label>
+        <label>Date<input type="date" name="date" value="${esc(draft.date)}" min="${esc(statement.from)}" max="${esc(statement.to)}" required></label>
+        <label class="wide">Narration<input name="narration" value="${esc(draft.narration)}" maxlength="280" autocomplete="off"></label>
+        <label class="check wide"><input type="checkbox" name="saveRule"${draft.saveRule ? " checked" : ""}><span>Remember this narration as a rule<small>The next statement row with the same words suggests this ledger. Dates, amounts and reference numbers are left out of the rule.</small></span></label>
+        <div class="actions wide"><button type="submit">Save voucher and match <kbd aria-hidden="true">⌘↩</kbd></button><button type="button" class="ghost" data-voucher-cancel>Cancel</button></div>
+      </div></form></td></tr>`;
+  };
+  const statementRowHtml = row => {
+    const open = drafts[row.id]?.open;
+    const create = `<button type="button" class="ghost" data-open-voucher="${esc(row.id)}" aria-expanded="${open ? "true" : "false"}" aria-label="Create voucher for bank row ${row.sourceRow}">Create voucher</button>`;
+    return `<tr data-statement-row="${esc(row.id)}"${selectedRows.has(row.id) ? ' class="selected-row"' : ""}><td class="reconciliation-select"><input type="checkbox" data-row-id="${esc(row.id)}" aria-label="Select bank row ${row.sourceRow}"${selectedRows.has(row.id) ? " checked" : ""}></td><td><span class="date-cell">${dateLabel(row.date)}</span>${row.reference ? `<strong class="reconciliation-detail code">${esc(row.reference)}</strong>` : '<span class="reconciliation-detail quiet">No reference</span>'}<small>${esc(row.narration)}</small>${row.possibleDuplicate ? '<small><span class="pill warn">Possible duplicate</span> This row is also in another imported statement.</small>' : ""}${row.candidateKind === "ambiguous" ? '<small><span class="pill warn">Several possible matches</span></small>' : ""}${suggestionsHtml(row)}${row.ruleSuggestion ? ruleHtml(row, create) : `<div class="recon-row-actions">${create}</div>`}</td><td class="figure">${money(row.amountPaise)}</td></tr>${open ? formHtml(row) : ""}`;
+  };
+  const totalRow = (label, list) => `<tfoot><tr class="total"><th scope="row" colspan="2">${label}</th><td class="figure">${money(list.reduce((total, row) => total + row.amountPaise, 0))}</td></tr></tfoot>`;
   const draw = () => {
     const rows = report.rows.filter(row => !row.matched && includes(row));
     const entries = report.bookEntries.filter(row => !row.matched && includes(row));
     const matches = report.matches.filter(match => match.rows.some(includes) || match.entries.some(includes));
     const old = report.openingChoices.filter(includes);
-    area.querySelector("[data-statement-rows]").innerHTML = `<div class="table-scroll"><table><thead><tr><th class="reconciliation-select"><span class="sr">Select</span></th><th>Date and reference</th><th class="figure">Amount ₹</th></tr></thead><tbody>${rows.slice(0, limit).map(row => `<tr><td class="reconciliation-select"><input type="checkbox" data-row-id="${esc(row.id)}" aria-label="Select bank row ${row.sourceRow}"${selectedRows.has(row.id) ? " checked" : ""}></td><td><span class="date-cell">${dateLabel(row.date)}</span>${row.reference ? `<strong class="reconciliation-detail code">${esc(row.reference)}</strong>` : '<span class="reconciliation-detail quiet">No reference</span>'}<small>${esc(row.narration)}</small>${row.possibleDuplicate ? '<small><span class="pill warn">Possible duplicate</span> This row is also in another imported statement.</small>' : ""}${row.candidateKind === "ambiguous" ? '<small><span class="pill warn">Several possible matches</span></small>' : ""}${row.candidates.length ? `<small>${row.candidateKind === "amount-date-reference" ? "Suggested by the same amount, date and reference." : "Suggested by the same amount and date."}</small>${row.candidates.map(candidate => `<button type="button" class="link reconciliation-candidate" data-candidate-row="${esc(row.id)}" data-candidate-voucher="${esc(candidate.voucherId)}">Select ${esc(candidate.number)}</button>`).join("")}` : ""}</td><td class="figure">${money(row.amountPaise)}</td></tr>`).join("") || '<tr><td colspan="3" class="quiet">No open bank rows match. Clear the search or import the next statement.</td></tr>'}</tbody></table></div>`;
-    area.querySelector("[data-book-rows]").innerHTML = `<div class="table-scroll"><table><thead><tr><th class="reconciliation-select"><span class="sr">Select</span></th><th>Date and voucher</th><th class="figure">Amount ₹</th></tr></thead><tbody>${entries.slice(0, limit).map(entry => `<tr><td class="reconciliation-select"><input type="checkbox" data-voucher-id="${esc(entry.voucherId)}" aria-label="Select book voucher ${esc(entry.number)}"${selectedBooks.has(entry.voucherId) ? " checked" : ""}></td><td><span class="date-cell">${dateLabel(entry.date)}</span><strong class="reconciliation-detail">${postingLink(entry)}</strong><small>${esc(entry.narration)}</small></td><td class="figure">${money(entry.amountPaise)}</td></tr>`).join("") || '<tr><td colspan="3" class="quiet">No uncleared book transactions match. Clear the search or pass the missing voucher.</td></tr>'}</tbody></table></div>`;
-    area.querySelector("[data-confirmed-matches]").innerHTML = `<div class="table-scroll"><table><thead><tr><th>Bank rows</th><th>Book vouchers</th><th class="figure">Amount ₹</th><th><span class="sr">Action</span></th></tr></thead><tbody>${matches.slice(0, limit).map(match => `<tr><td>${match.rows.map(row => `<span class="reconciliation-detail"><span class="date-cell">${dateLabel(row.date)}</span> <span class="code">${esc(row.reference)}</span>${match.rows.length > 1 ? ` <span class="quiet">₹ ${money(row.amountPaise)}</span>` : ""}</span>`).join("")}</td><td>${match.entries.map(entry => `<span class="reconciliation-detail">${postingLink(entry)}</span>`).join("")}</td><td class="figure">${money(matchTotal(match))}</td><td><button type="button" class="danger" data-unmatch="${esc(match.id)}">Unmatch</button></td></tr>`).join("") || '<tr><td colspan="4" class="quiet">No confirmed matches for this search. Select rows on both sides above and confirm the match.</td></tr>'}</tbody></table></div>`;
+    area.querySelector("[data-statement-rows]").innerHTML = `<div class="table-scroll"><table class="recon-statement-table"><thead><tr><th class="reconciliation-select"><span class="sr">Select</span></th><th>Date, reference and suggestions</th><th class="figure">Amount ₹</th></tr></thead><tbody>${rows.slice(0, limit).map(statementRowHtml).join("") || '<tr><td colspan="3" class="quiet">No open bank rows match. Clear the search or import the next statement.</td></tr>'}</tbody>${rows.length ? totalRow(query() ? "Open rows found" : "Open statement rows", rows) : ""}</table></div>`;
+    area.querySelector("[data-book-rows]").innerHTML = `<div class="table-scroll"><table><thead><tr><th class="reconciliation-select"><span class="sr">Select</span></th><th>Date and voucher</th><th class="figure">Amount ₹</th></tr></thead><tbody>${entries.slice(0, limit).map(entry => `<tr${selectedBooks.has(entry.voucherId) ? ' class="selected-row"' : ""}><td class="reconciliation-select"><input type="checkbox" data-voucher-id="${esc(entry.voucherId)}" aria-label="Select book voucher ${esc(entry.number)}"${selectedBooks.has(entry.voucherId) ? " checked" : ""}></td><td><span class="date-cell">${dateLabel(entry.date)}</span><strong class="reconciliation-detail">${postingLink(entry)}</strong><small>${esc(entry.narration)}</small></td><td class="figure">${money(entry.amountPaise)}</td></tr>`).join("") || '<tr><td colspan="3" class="quiet">No uncleared book transactions match. Clear the search, or create the missing voucher from its statement row.</td></tr>'}</tbody>${entries.length ? totalRow(query() ? "Uncleared transactions found" : "Uncleared book transactions", entries) : ""}</table></div>`;
+    area.querySelector("[data-confirmed-matches]").innerHTML = `<div class="table-scroll"><table><thead><tr><th>Bank rows</th><th>Book vouchers</th><th class="figure">Amount ₹</th><th><span class="sr">Action</span></th></tr></thead><tbody>${matches.slice(0, limit).map(match => `<tr data-match-row="${esc(match.id)}"><td>${match.rows.map(row => `<span class="reconciliation-detail"><span class="date-cell">${dateLabel(row.date)}</span> <span class="code">${esc(row.reference)}</span>${match.rows.length > 1 ? ` <span class="quiet">₹ ${money(row.amountPaise)}</span>` : ""}</span>`).join("")}</td><td>${match.entries.map(entry => `<span class="reconciliation-detail">${postingLink(entry)}${match.entries.length > 1 ? ` <span class="quiet">₹ ${money(entry.amountPaise)}</span>` : ""}</span>`).join("")}</td><td class="figure">${money(matchTotal(match))}</td><td><button type="button" class="danger" data-unmatch="${esc(match.id)}">Unmatch</button></td></tr>`).join("") || '<tr><td colspan="4" class="quiet">No confirmed matches for this search. Select rows on both sides above and confirm the match.</td></tr>'}</tbody></table></div>`;
     area.querySelector("[data-opening-choices]").innerHTML = old.slice(0, limit).map(entry => `<label class="check"><input type="checkbox" data-opening-voucher="${esc(entry.voucherId)}"${openingIds.has(entry.voucherId) ? " checked" : ""}><span class="date-cell">${dateLabel(entry.date)}</span><span class="code">${esc(entry.number)}</span><span>₹ ${money(entry.amountPaise)}</span></label>`).join("") || '<p class="quiet">No older bank postings match this search.</p>';
     area.querySelector("[data-more-bank]").hidden = ![rows, entries, matches, old].some(list => list.length > limit);
+    for (const form of area.querySelectorAll("[data-voucher-form]")) {
+      const select = form.querySelector("select[name=ledgerId]");
+      ledgers.install(select, ledgers.forBank(statement.ledgerId), chosen => focusNext(form, ledgerControl(chosen.parentElement)));
+    }
     selectedTotals();
   };
+  const formValues = form => ({ ledgerId: form.elements.ledgerId.value, type: form.elements.type.value, date: form.elements.date.value, narration: form.elements.narration.value, saveRule: form.elements.saveRule.checked });
+  const openButton = rowId => area.querySelector(`[data-open-voucher="${CSS.escape(rowId)}"]`);
+  const openForm = row => {
+    const draft = drafts[row.id];
+    if (draft) draft.open = true;
+    else {
+      /* A matching rule fills the ledger, type and narration; otherwise the row's own date and description. */
+      const rule = row.ruleSuggestion;
+      drafts[row.id] = { open: true, ledgerId: rule?.ledgerId || "", type: rule?.type || defaultType(row.amountPaise), date: row.date, narration: rule?.narration || rowNarration(row), saveRule: false };
+    }
+    persist(); draw();
+    const form = area.querySelector(`[data-voucher-form="${CSS.escape(row.id)}"]`);
+    if (!form) return;
+    form.scrollIntoView({ block: "nearest" });
+    /* With the ledger already chosen the form is ready, so Save takes focus and one Return passes the voucher. */
+    if (drafts[row.id].ledgerId) form.querySelector('button[type="submit"]').focus();
+    else ledgerControl(form)?.focus();
+  };
+  const closeForm = (rowId, discard) => {
+    if (discard) delete drafts[rowId]; else if (drafts[rowId]) drafts[rowId].open = false;
+    persist(); draw();
+    openButton(rowId)?.focus();
+  };
+  const submitVoucher = async form => {
+    const row = rowsById.get(form.dataset.voucherForm);
+    if (!row || form.dataset.busy === "true") return;
+    clearAlert(form);
+    const values = formValues(form);
+    if (!values.ledgerId) { showAlert("Choose the ledger on the other side of this bank entry.", form); ledgerControl(form)?.focus(); return; }
+    if (!form.elements.date.checkValidity()) { showAlert(`Choose a voucher date from ${dateLabel(statement.from)} to ${dateLabel(statement.to)}, inside the statement period.`, form); form.elements.date.focus(); return; }
+    const draft = drafts[row.id];
+    draft.requestId ||= crypto.randomUUID();
+    persist();
+    form.dataset.busy = "true";
+    const buttons = [...form.querySelectorAll("button")];
+    for (const button of buttons) button.disabled = true;
+    try {
+      const result = await api(`${base}/bank/${encodeURIComponent(statement.id)}/rows/${rowIndex.get(row.id)}/voucher`, { method: "POST",
+        body: { ledgerId: values.ledgerId, type: values.type, date: values.date, narration: values.narration.trim(), saveRule: values.saveRule, requestId: draft.requestId, revision: report.revision } });
+      if (!still(token)) return;
+      delete drafts[row.id];
+      persist();
+      writeJson(savedKey, { statementId: statement.id, voucherId: result.voucher.id, type: result.voucher.type, number: result.voucher.number, date: result.voucher.date,
+        paise: Math.abs(row.amountPaise), rowDate: row.date, matchId: result.match?.id || "",
+        rule: result.ruleLearned && result.rule ? { pattern: result.rule.pattern, ledgerName: ledgers.name(result.rule.ledgerId) } : null, ruleNote: result.ruleNote || "" });
+      await refresh();
+    } catch (failure) {
+      if (!still(token)) return;
+      showAlert(failure.message, form);
+    } finally {
+      form.dataset.busy = "false";
+      for (const button of buttons) button.disabled = false;
+    }
+  };
+  const rememberForm = form => {
+    const draft = drafts[form.dataset.voucherForm];
+    if (!draft) return;
+    Object.assign(draft, formValues(form));
+    delete draft.requestId;
+    persist();
+  };
+  area.addEventListener("input", event => { const form = event.target.closest("[data-voucher-form]"); if (form) rememberForm(form); });
   area.addEventListener("change", event => {
     const target = event.target;
+    const form = target.closest("[data-voucher-form]");
+    if (form) { rememberForm(form); return; }
     const set = target.dataset.rowId ? selectedRows : target.dataset.voucherId ? selectedBooks : target.dataset.openingVoucher ? openingIds : null;
     const id = target.dataset.rowId || target.dataset.voucherId || target.dataset.openingVoucher;
-    if (set) { if (target.checked) set.add(id); else set.delete(id); selectedTotals(); }
+    if (!set) return;
+    if (target.checked) set.add(id); else set.delete(id);
+    if (set !== openingIds) { target.closest("tr")?.classList.toggle("selected-row", target.checked); selectedTotals(); }
+  });
+  area.addEventListener("keydown", event => {
+    const form = event.target.closest("[data-voucher-form]");
+    if (!form) return;
+    /* Escape closes the inline form and keeps what was typed for the next time it opens. */
+    if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); closeForm(form.dataset.voucherForm, false); return; }
+    returnMoves(event, form);
+  });
+  area.addEventListener("submit", event => {
+    const form = event.target.closest("[data-voucher-form]");
+    if (!form) return;
+    event.preventDefault();
+    submitVoucher(form);
   });
   area.addEventListener("click", async event => {
-    const candidate = event.target.closest("[data-candidate-row]");
-    if (candidate) { selectedRows.clear(); selectedBooks.clear(); selectedRows.add(candidate.dataset.candidateRow); selectedBooks.add(candidate.dataset.candidateVoucher); draw(); }
+    const opener = event.target.closest("[data-open-voucher]");
+    if (opener) {
+      const row = rowsById.get(opener.dataset.openVoucher);
+      if (drafts[row.id]?.open) closeForm(row.id, false); else openForm(row);
+      return;
+    }
+    const cancel = event.target.closest("[data-voucher-cancel]");
+    if (cancel) { closeForm(cancel.closest("[data-voucher-form]").dataset.voucherForm, true); return; }
+    if (event.target.closest("[data-clear-selection]")) {
+      selectedRows.clear(); selectedBooks.clear(); draw();
+      area.querySelector("[data-bank-search]").focus();
+      return;
+    }
+    const suggestion = event.target.closest("[data-suggest-row]");
+    if (suggestion) {
+      const row = rowsById.get(suggestion.dataset.suggestRow);
+      const entry = row?.suggestions.find(item => item.voucherId === suggestion.dataset.suggestVoucher);
+      try {
+        const status = `Bank row dated ${dateLabel(row.date)} for ₹ ${formatINR(Math.abs(row.amountPaise))} matched to ${entry?.number || "the book entry"}.`;
+        if (await save("match-bank", { statementId: statement.id, rowIds: [row.id], voucherIds: [suggestion.dataset.suggestVoucher] }, suggestion, status, report.revision)) await refresh();
+      } catch (failure) { errorAt(area.querySelector("[data-match-error]"), failure); }
+      return;
+    }
     const unmatch = event.target.closest("[data-unmatch]");
     if (unmatch) {
       const match = report.matches.find(row => row.id === unmatch.dataset.unmatch);
@@ -254,14 +673,14 @@ function bindBankReport(ctx, report) {
   });
   area.querySelector("[data-confirm-bank-match]").addEventListener("click", async event => {
     try {
-      const result = await save("match-bank", { statementId: report.statement.id, rowIds: [...selectedRows], voucherIds: [...selectedBooks] }, event.target, "Selected transactions matched.", report.revision);
+      const result = await save("match-bank", { statementId: statement.id, rowIds: [...selectedRows], voucherIds: [...selectedBooks] }, event.target, "Selected transactions matched.", report.revision);
       if (result) await refresh();
     } catch (failure) { errorAt(area.querySelector("[data-match-error]"), failure); }
   });
   area.querySelector("#bank-opening-pending").addEventListener("submit", async event => {
     event.preventDefault();
     try {
-      if (await save("bank-opening", { statementId: report.statement.id, openingPendingVoucherIds: [...openingIds] }, event.target, "Opening pending transactions saved.", report.revision)) await refresh();
+      if (await save("bank-opening", { statementId: statement.id, openingPendingVoucherIds: [...openingIds] }, event.target, "Opening pending transactions saved.", report.revision)) await refresh();
     } catch (failure) { errorAt(area.querySelector("[data-opening-error]"), failure); }
   });
   area.querySelector("[data-bank-search]").addEventListener("input", () => { limit = 200; draw(); });
@@ -269,6 +688,12 @@ function bindBankReport(ctx, report) {
   root.querySelector("[data-reconciliation-print]").addEventListener("click", () => { limit = Number.MAX_SAFE_INTEGER; draw(); window.print(); });
   bindAudit(ctx, area.querySelector(".reconciliation-audit"));
   draw();
+  if (justSaved) {
+    const notice = area.querySelector(".recon-saved");
+    notice.scrollIntoView({ block: "nearest" });
+    notice.focus({ preventScroll: true });
+    area.querySelector(`[data-match-row="${CSS.escape(justSaved.matchId)}"]`)?.classList.add("recon-just-saved");
+  }
 }
 
 async function billWorkspace(ctx) {

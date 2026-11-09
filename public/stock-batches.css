@@ -1,1 +1,37 @@
 /* Styles for stock-batches. Shared primitives live in ledgercraft.css; only screen-specific rules belong here. */
+
+/* Item header: one line per alternate unit, under the counting and costing facts. */
+.stock-units { list-style: none; margin: -6px 0 12px; padding: 0; font-size: 14px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.stock-units li + li { margin-top: 2px; }
+
+/* Tally costing disclosure on the item ledger. */
+.stock-costing-note { max-width: 70ch; }
+.stock-costing-note .kv { margin-top: 8px; }
+.stock-costing-note .kv dd { font-variant-numeric: tabular-nums; }
+.stock-costing-note p.quiet { margin-top: 8px; font-size: 13px; }
+
+/* Batches and stock on hand by receipt. */
+.stock-batches .table-scroll, .stock-lots .table-scroll { margin-top: 8px; }
+.stock-batch-table { min-width: 36rem; }
+.stock-lot-table { min-width: 36rem; }
+.stock-batch-table th[scope="row"] .pill { margin-left: 6px; }
+.stock-batch-expired > th, .stock-batch-expired > td { background: color-mix(in srgb, var(--amber-soft) 55%, transparent); }
+
+/* Journal lines: unit hint under the quantity, and the batch fields. */
+.stock-base-hint { display: block; min-height: 1.2em; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.stock-base-hint:empty { display: none; }
+.stock-track-batch { align-self: end; min-height: var(--control); align-items: center; }
+.stock-entry-table input[type="date"] { min-width: 9.5rem; }
+
+/* Tally stock review: an informational costing line under its item. */
+.tally-stock-note > td { padding-top: 0; color: var(--ink-2); font-size: 13px; }
+.tally-stock-note > td .pill { margin-right: 2px; }
+.tally-stock-notes { list-style: none; margin: 12px 0; padding: 0; font-size: 14px; color: var(--ink-2); }
+.tally-stock-notes li { margin: 6px 0; max-width: 70ch; }
+.tally-stock-notes .pill { margin-right: 2px; }
+.tally-stock-review tr.tally-stock-item:has(+ .tally-stock-note) > th, .tally-stock-review tr.tally-stock-item:has(+ .tally-stock-note) > td { border-bottom-color: transparent; }
+
+@media print {
+  .stock-batch-expired > th, .stock-batch-expired > td { background: none; }
+  .stock-units, .stock-base-hint { color: #333; }
+}
