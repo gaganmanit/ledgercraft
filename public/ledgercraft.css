@@ -512,7 +512,9 @@ button.link:hover { background: transparent; text-decoration-color: currentColor
 
 /* ---------- Shared components for module screens ---------- */
 
-.table-scroll { overflow-x: auto; max-width: 100%; margin-top: 12px; }
+/* position: relative makes the scroller the containing block, so absolutely positioned
+   children such as .sr header text scroll with the table instead of widening the page. */
+.table-scroll { position: relative; overflow-x: auto; max-width: 100%; margin-top: 12px; }
 .table-scroll > table { margin-top: 0; }
 
 .toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 14px; margin: 16px 0 14px; }

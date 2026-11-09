@@ -119,6 +119,8 @@ def finder_layout(mount, volume_name, background):
     if disk != volume_name:
         print(f"The writable image mounted as {disk!r} because another {volume_name!r} volume is attached; laying out {disk!r}", file=sys.stderr)
     bg = 'set background picture of theViewOptions to file ".background:background.png"' if background else ""
+    # Two passes: Finder only persists icon-view options (size, arrangement, backdrop) for a window that is
+    # already in icon view, so the view is switched and the window closed before the options are applied.
     script = f'''
         tell application "Finder"
             tell disk "{disk}"
@@ -127,6 +129,11 @@ def finder_layout(mount, volume_name, background):
                 set toolbar visible of container window to false
                 set statusbar visible of container window to false
                 set the bounds of container window to {{400, 180, 1060, 600}}
+                close
+            end tell
+            delay 1
+            tell disk "{disk}"
+                open
                 set theViewOptions to the icon view options of container window
                 set arrangement of theViewOptions to not arranged
                 set icon size of theViewOptions to 128
@@ -142,7 +149,14 @@ def finder_layout(mount, volume_name, background):
             end tell
         end tell
     '''
-    run(["/usr/bin/osascript", "-e", script], capture_output=True)
+    for attempt in range(3):
+        run(["/usr/bin/osascript", "-e", script], capture_output=True)
+        run(["/bin/sync"])
+        recorded = ds_store_summary(Path(mount) / ".DS_Store") if (Path(mount) / ".DS_Store").is_file() else {"positioned": set(), "backdrop": False}
+        if {"Ledgercraft.app", "Applications"} <= recorded["positioned"] and (recorded["backdrop"] or not background):
+            return recorded
+        time.sleep(2)
+    raise ValueError("Finder did not record the window layout: " + repr(recorded))
 
 def ds_store_summary(path):
     """Read Finder's .DS_Store (buddy-allocator file with one B-tree of records) and report icon positions and backdrop."""
