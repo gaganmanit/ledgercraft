@@ -20,7 +20,7 @@ try{
  await writeFile(config,JSON.stringify({base,output}));await cp(path.join(root,'test/ledgercraft-branding-ui.swift'),swift);
  await run(['/usr/bin/swiftc','-swift-version','5',swift,'-o',executable,'-framework','AppKit','-framework','WebKit']);await run([executable,config]);
  const native=JSON.parse(await readFile(path.join(output,'native-results.json'),'utf8'));assert.equal(native.passed,true);
- const sourceSHA256ByFile={};for(const file of ['public/app.js','public/book-tools.js','public/tally-tools.js','public/finder.js','public/index.html','public/desk.css','public/favicon.svg','public/tally-bridge.ps1'])sourceSHA256ByFile[file]=createHash('sha256').update(await readFile(path.join(frozen,file))).digest('hex');
+ const sourceSHA256ByFile={};for(const file of ['public/app.js','public/book-tools.js','public/tally-tools.js','public/finder.js','public/index.html','public/ledgercraft.css','public/favicon.svg','public/tally-bridge.ps1'])sourceSHA256ByFile[file]=createHash('sha256').update(await readFile(path.join(frozen,file))).digest('hex');
  await writeFile(path.join(output,'source-proof.json'),JSON.stringify({passed:true,sourceRoot,sourceSHA256ByFile,internalDataDirectoryUnaffected:true},null,2));
  console.log(`Ledgercraft native branding proof saved to ${output}`);
 }finally{if(server){server.closeIdleConnections();await new Promise(resolve=>server.close(resolve));}await rm(scratch,{recursive:true,force:true});}

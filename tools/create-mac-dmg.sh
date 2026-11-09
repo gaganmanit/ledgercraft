@@ -144,6 +144,77 @@ def finder_layout(mount, volume_name, background):
     '''
     run(["/usr/bin/osascript", "-e", script], capture_output=True)
 
+def ds_store_summary(path):
+    """Read Finder's .DS_Store (buddy-allocator file with one B-tree of records) and report icon positions and backdrop."""
+    data = path.read_bytes()
+    if data[:4] != b"\x00\x00\x00\x01" or data[4:8] != b"Bud1":
+        raise ValueError("Not a .DS_Store file")
+    import plistlib, struct
+    root_offset, root_size = struct.unpack(">II", data[8:16])
+    root = data[root_offset + 4: root_offset + 4 + root_size]
+    count = struct.unpack(">I", root[:4])[0]
+    offsets = [struct.unpack(">I", root[8 + 4 * i: 12 + 4 * i])[0] for i in range(count)]
+    def block(index):
+        address = offsets[index]
+        offset, size = address & ~0x1F, 1 << (address & 0x1F)
+        return data[offset + 4: offset + 4 + size]
+    position = 8 + 4 * ((count + 255) // 256 * 256)
+    table_count = struct.unpack(">I", root[position:position + 4])[0]
+    position += 4
+    tables = {}
+    for _ in range(table_count):
+        length = root[position]
+        name = root[position + 1: position + 1 + length].decode("ascii")
+        tables[name] = struct.unpack(">I", root[position + 1 + length: position + 5 + length])[0]
+        position += 5 + length
+    header = block(tables["DSDB"])
+    tree_root = struct.unpack(">I", header[:4])[0]
+    found = {"positioned": set(), "backdrop": False}
+    def records(node_index):
+        node = block(node_index)
+        mode, record_count = struct.unpack(">II", node[:8])
+        cursor = 8
+        for _ in range(record_count):
+            if mode:
+                child = struct.unpack(">I", node[cursor:cursor + 4])[0]
+                cursor += 4
+                records(child)
+            cursor = record(node, cursor)
+        if mode:
+            records(mode)
+    def record(node, cursor):
+        length = struct.unpack(">I", node[cursor:cursor + 4])[0]
+        name = node[cursor + 4: cursor + 4 + 2 * length].decode("utf-16-be")
+        cursor += 4 + 2 * length
+        kind, data_type = node[cursor:cursor + 4], node[cursor + 4: cursor + 8]
+        cursor += 8
+        if data_type in (b"long", b"shor", b"type"):
+            value, cursor = node[cursor:cursor + 4], cursor + 4
+        elif data_type == b"bool":
+            value, cursor = node[cursor:cursor + 1], cursor + 1
+        elif data_type in (b"comp", b"dutc"):
+            value, cursor = node[cursor:cursor + 8], cursor + 8
+        elif data_type == b"blob":
+            size = struct.unpack(">I", node[cursor:cursor + 4])[0]
+            value, cursor = node[cursor + 4: cursor + 4 + size], cursor + 4 + size
+        elif data_type == b"ustr":
+            size = struct.unpack(">I", node[cursor:cursor + 4])[0]
+            value, cursor = node[cursor + 4: cursor + 4 + 2 * size], cursor + 4 + 2 * size
+        else:
+            raise ValueError("Unknown .DS_Store record type " + repr(data_type))
+        if kind == b"Iloc":
+            found["positioned"].add(name)
+        if kind == b"BKGD" and value[:4] == b"PctB":
+            found["backdrop"] = True
+        if kind == b"icvp":
+            # Modern Finder keeps the icon-view options as a plist: backgroundType 2 is a picture, with its bookmark.
+            options = plistlib.loads(value)
+            if options.get("backgroundType") == 2 and options.get("backgroundImageAlias"):
+                found["backdrop"] = True
+        return cursor
+    records(tree_root)
+    return found
+
 def privacy_check(app, check_attributes=True):
     if any(file.is_symlink() for file in app.rglob("*")):
         raise ValueError("Unexpected symbolic link in public bundle")
@@ -164,7 +235,8 @@ def privacy_check(app, check_attributes=True):
         if not entry.strip(): continue
         file, attribute_name = entry.rsplit(": ", 1)
         marker = bytes.fromhex(run(["/usr/bin/xattr", "-px", attribute_name, file], capture_output=True, text=True).stdout)
-        if attribute_name == "com.apple.FinderInfo" and marker == bytes(32):
+        if attribute_name == "com.apple.FinderInfo" and marker in (bytes(32), bytes(10) + b"\xff" * 4 + bytes(18)):
+            # All zero, or zero with the "no icon position" location (-1, -1) that makehybrid writes.
             empty_finder_info += 1
             continue
         if attribute_name != "com.apple.provenance":
@@ -249,24 +321,35 @@ try:
         volume_name = "Ledgercraft " + version
         writable = work / "release-master.dmg"
         print("Creating release disk image", flush=True)
-        # HFS+ keeps executable modes and lets Finder store the window layout and the Applications
-        # shortcut. The app bundle itself carries no Finder metadata (privacy_check verifies that).
+        # Finder writes the window layout (icon positions, backdrop, icon size) into .DS_Store. It can only do
+        # that on a mounted writable volume, so lay out a scratch HFS+ copy, keep its .DS_Store and master the
+        # public image from the stage with makehybrid, which writes the filesystem directly and carries none of
+        # the kernel's per-machine provenance attributes that any copied file picks up on this Mac.
+        layout_image = work / "layout.dmg"
         run(["/usr/bin/hdiutil", "create", "-srcfolder", stage, "-volname", volume_name, "-fs", "HFS+",
-             "-fsargs", "-c c=64,a=16,e=16", "-format", "UDRW", "-o", writable], capture_output=True)
-        layout_mount = run(["/usr/bin/hdiutil", "attach", "-readwrite", "-noverify", "-noautoopen", writable], capture_output=True, text=True).stdout
+             "-format", "UDRW", "-o", layout_image], capture_output=True)
+        layout_mount = run(["/usr/bin/hdiutil", "attach", "-readwrite", "-noverify", "-noautoopen", layout_image], capture_output=True, text=True).stdout
         layout_path = next(line.split("\t")[-1].strip() for line in layout_mount.splitlines() if "/Volumes/" in line)
         mounted = layout_path
         try:
             finder_layout(layout_path, volume_name, has_backdrop)
-            if has_backdrop:
-                run(["/usr/bin/SetFile", "-a", "V", Path(layout_path) / ".background"], capture_output=True)
-            # Finder's look at the volume tags the bundle with provenance and quarantine attributes; strip them again and re-check before mastering.
-            run(["/usr/bin/xattr", "-cr", Path(layout_path) / "Ledgercraft.app"])
-            privacy_check(Path(layout_path) / "Ledgercraft.app")
             run(["/bin/sync"])
+            shutil.copyfile(Path(layout_path) / ".DS_Store", stage / ".DS_Store")
         finally:
             run(["/usr/bin/hdiutil", "detach", layout_path], capture_output=True)
             mounted = None
+        layout_image.unlink()
+        layout = ds_store_summary(stage / ".DS_Store")
+        if {"Ledgercraft.app", "Applications"} - layout["positioned"]:
+            raise ValueError("Finder did not record icon positions for " + ", ".join(sorted({"Ledgercraft.app", "Applications"} - layout["positioned"])))
+        if has_backdrop and not layout["backdrop"]:
+            raise ValueError("Finder did not record the backdrop picture")
+        if has_backdrop:
+            run(["/usr/bin/SetFile", "-a", "V", backdrop_dir], capture_output=True)
+        normalize_dates(stage)
+        # HFS+ keeps the Applications symbolic link and executable modes; makehybrid synthesises only the
+        # fixed, empty Finder location marker on each file (privacy_check accepts exactly that).
+        run(["/usr/bin/hdiutil", "makehybrid", "-hfs", "-hfs-volume-name", volume_name, "-hfs-openfolder", stage, "-o", writable, stage])
         mount = work / "image-mount"
         mount.mkdir()
         with writable.open("rb") as image:

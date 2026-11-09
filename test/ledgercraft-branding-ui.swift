@@ -18,23 +18,23 @@ struct BrandingFailure:Error,CustomStringConvertible {let description:String}
     func wait(_ source:String,_ name:String)async throws{let end=Date().addingTimeInterval(20);while Date()<end{if (try await js(source)) as? Bool==true{return};try await Task.sleep(nanoseconds:100_000_000)};throw BrandingFailure(description:"Timed out: "+name)}
     func snapshot(_ file:String)async throws{let shot=try await web.takeSnapshot(configuration:nil),bitmap=NSBitmapImageRep(data:shot.tiffRepresentation!)!;try bitmap.representation(using:.png,properties:[:])!.write(to:output.appendingPathComponent(file))}
     func exercise()async throws{
-        try await wait("document.querySelector('.wordmark')?.textContent.trim()==='Ledgercraft'&&document.title==='Ledgercraft'","Ledgercraft company chooser")
+        try await wait("document.querySelector('.brand')?.textContent.trim()==='Ledgercraft'&&document.title==='Ledgercraft'","Ledgercraft company chooser")
         _ = try await js("window.__brandFontsReady=false;document.fonts.ready.then(()=>window.__brandFontsReady=true);true")
         try await wait("window.__brandFontsReady===true","local wordmark font")
         var measurements:[[String:Any]]=[]
         for width in [1440,1024,1000,850,768,375] {
             window.setContentSize(NSSize(width:width,height:1000));try await wait("window.innerWidth===\(width)","viewport")
-            let measure=try await js("(()=>{const e=document.querySelector('.wordmark'),rail=e.closest('.rail'),r=e.getBoundingClientRect(),rr=rail.getBoundingClientRect(),text=document.createRange();text.selectNode(e.lastChild);const tr=text.getBoundingClientRect();return {viewport:innerWidth,wordmarkWidth:r.width,wordmarkScrollWidth:e.scrollWidth,wordmarkClientWidth:e.clientWidth,railWidth:rr.width,textRight:tr.right,railRight:rr.right};})()") as! [String:Any]
+            let measure=try await js("(()=>{const e=document.querySelector('.brand'),rail=e.closest('.cover'),r=e.getBoundingClientRect(),rr=rail.getBoundingClientRect(),text=document.createRange();text.selectNode(e.lastChild);const tr=text.getBoundingClientRect();return {viewport:innerWidth,wordmarkWidth:r.width,wordmarkScrollWidth:e.scrollWidth,wordmarkClientWidth:e.clientWidth,railWidth:rr.width,textRight:tr.right,railRight:rr.right};})()") as! [String:Any]
             measurements.append(measure)
-            try await require("(()=>{const e=document.querySelector('.wordmark'),r=e.getBoundingClientRect(),rr=e.closest('.rail').getBoundingClientRect();return e.scrollWidth<=e.clientWidth+1&&r.right<=rr.right+1&&document.documentElement.scrollWidth<=innerWidth+1;})()","Wordmark or page overflows at \(width)px")
+            try await require("(()=>{const e=document.querySelector('.brand'),r=e.getBoundingClientRect(),rr=e.closest('.cover').getBoundingClientRect();return e.scrollWidth<=e.clientWidth+1&&r.right<=rr.right+1&&document.documentElement.scrollWidth<=innerWidth+1;})()","Wordmark or page overflows at \(width)px")
             if width==1440 {try await snapshot("ledgercraft-desktop.png")}
             if width==850 {try await snapshot("ledgercraft-narrow-rail.png")}
             if width==375 {try await snapshot("ledgercraft-mobile.png")}
         }
         window.setContentSize(NSSize(width:1440,height:1000));try await wait("innerWidth===1440","desktop reset")
-        _ = try await js("document.querySelector('.search-button').click();true")
+        _ = try await js("document.querySelector('.find-button').click();true")
         try await wait("document.querySelector('dialog[open]')?.getAttribute('aria-label')==='Find in Ledgercraft'","renamed finder dialog")
-        try await require("document.querySelector('dialog[open]').textContent.includes('Find in Ledgercraft')","Finder heading keeps old brand")
+        try await require("(()=>{const d=document.querySelector('dialog[open]'),label=d.querySelector('label[for=find-query]');return d.getAttribute('aria-label')==='Find in Ledgercraft'&&!!label&&label.textContent.trim().length>0&&!!d.querySelector('#find-query')&&!d.outerHTML.includes('Financer');})()","Finder heading keeps old brand")
         try await snapshot("ledgercraft-finder.png")
         _ = try await js("document.querySelector('dialog[open] button').click();location.hash='#/transfer';true")
         try await wait("document.body.innerText.includes('Choose a Ledgercraft backup')&&document.title.includes('Ledgercraft')","backup import wording")
@@ -42,8 +42,8 @@ struct BrandingFailure:Error,CustomStringConvertible {let description:String}
         try await wait("document.body.innerText.includes('full Ledgercraft Tally archive')&&document.title.includes('Ledgercraft')","Tally import wording")
         _ = try await js("window.__brandIconDone=false;fetch('/favicon.svg').then(r=>r.text()).then(s=>{window.__brandIcon=s;window.__brandIconDone=true;});true")
         try await wait("window.__brandIconDone===true","served icon")
-        try await require("window.__brandIcon.includes('>LC<')&&!window.__brandIcon.includes('>Fn<')&&window.__brandingErrors.length===0&&!document.body.innerText.includes('Financer')","LC icon or visible branding failed")
-        let result:[String:Any]=["passed":true,"browser":"macOS WKWebView on isolated empty books","product":"Ledgercraft","iconMonogram":"LC","measurements":measurements,"finderRenamed":true,"backupAndTallyWordingRenamed":true,"pageErrors":[]]
+        try await require("window.__brandIcon.trim().startsWith('<svg')&&window.__brandIcon.toLowerCase().includes('fill=\"#a51d2d\"')&&document.querySelector('link[rel=icon]').getAttribute('href')==='/favicon.svg'&&!window.__brandIcon.includes('>Fn<')&&!window.__brandIcon.includes('Financer')&&window.__brandingErrors.length===0&&!document.body.innerText.includes('Financer')","Ledgercraft icon or visible branding failed")
+        let result:[String:Any]=["passed":true,"browser":"macOS WKWebView on isolated empty books","product":"Ledgercraft","icon":"Ledgercraft ruled page with red spine","measurements":measurements,"finderRenamed":true,"backupAndTallyWordingRenamed":true,"pageErrors":[]]
         try JSONSerialization.data(withJSONObject:result,options:[.prettyPrinted,.sortedKeys]).write(to:output.appendingPathComponent("native-results.json"));window.close()
     }
 }
