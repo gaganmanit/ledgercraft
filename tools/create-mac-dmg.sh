@@ -280,8 +280,15 @@ try:
         print("Verifying read-only image and isolated native launch", flush=True)
         run(["/usr/bin/hdiutil", "attach", "-readonly", "-nobrowse", "-noautoopen", "-owners", "off", "-mountpoint", mount, partial], capture_output=True)
         mounted = mount
-        if {file.name for file in mount.iterdir()} != {"Ledgercraft.app"}:
-            raise ValueError("Unexpected disk-image root contents")
+        root_entries = {file.name for file in mount.iterdir()}
+        if {name for name in root_entries if not name.startswith(".")} != {"Ledgercraft.app", "Applications"}:
+            raise ValueError("Unexpected disk-image root contents: " + ", ".join(sorted(root_entries)))
+        if not root_entries <= {"Ledgercraft.app", "Applications", ".background", ".DS_Store", ".fseventsd", ".Trashes"}:
+            raise ValueError("Unexpected hidden disk-image root contents: " + ", ".join(sorted(root_entries)))
+        if not (mount / "Applications").is_symlink() or os.readlink(mount / "Applications") != "/Applications":
+            raise ValueError("The Applications shortcut must be a symbolic link to /Applications")
+        if has_backdrop and not (mount / ".background/background.png").is_file():
+            raise ValueError("The window backdrop is missing from the read-only image")
         packaged = mount / "Ledgercraft.app"
         signature = run(["/usr/bin/codesign", "--verify", "--deep", "--strict", "--verbose=2", packaged], capture_output=True, text=True)
         (proof / "codesign-verify.txt").write_text((signature.stdout + signature.stderr).replace(str(packaged), "Ledgercraft.app"))
