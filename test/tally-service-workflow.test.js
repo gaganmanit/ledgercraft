@@ -6,12 +6,14 @@ import {readFile, mkdtemp, rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import {start} from "../server.js";
+import {needsResources, HSN_DIRECTORY, GSTR1_TEMPLATE} from "./helpers/resources.mjs";
 
 const source = {name:"tally-service-cycle.xml",base64:(await readFile(new URL("./fixtures/tally-service-cycle.xml",import.meta.url))).toString("base64")};
 const serviceNames = ["Consulting Income","Support Income","Professional Fees","Maintenance Expense"];
 const amountProfile = invoice => invoice.items.map(line=>[line.kind,line.hsnSac,line.gstRateBps,line.taxablePaise,line.taxPaise]);
 
-test("four Tally service workflows reconcile original accounts, goods-only stock, returns, XML and dated input credit",async()=>{
+test("four Tally service workflows reconcile original accounts, goods-only stock, returns, XML and dated input credit",async(t)=>{
+  if (!needsResources(t, HSN_DIRECTORY, GSTR1_TEMPLATE)) return;
   const dataDir=await mkdtemp(path.join(tmpdir(),"ledgercraft-service-e2e-"));
   const server=await start({port:0,dataDir}), base="http://127.0.0.1:"+server.address().port;
   async function api(route,body,method=body===undefined?"GET":"POST"){
