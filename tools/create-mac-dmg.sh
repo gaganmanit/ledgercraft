@@ -229,6 +229,24 @@ def ds_store_summary(path):
     records(tree_root)
     return found
 
+def scrub_layout_file(path):
+    """Finder's bookmark records in .DS_Store (window folder and backdrop picture) carry the account name of
+    the user who arranged the window. Overwrite it in place with a same-length neutral value so the file's
+    buddy-allocator layout and plist lengths stay valid, then prove no private term is left."""
+    data = bytearray(path.read_bytes())
+    for term in private:
+        replacement = (b"ledgercraft" * (len(term) // 11 + 1))[:len(term)]
+        start = 0
+        while True:
+            index = data.find(term, start)
+            if index < 0:
+                break
+            data[index:index + len(term)] = replacement
+            start = index + len(term)
+    path.write_bytes(bytes(data))
+    if any(term in data for term in private):
+        raise ValueError("Private build identity remains in the window layout file")
+
 def privacy_check(app, check_attributes=True):
     if any(file.is_symlink() for file in app.rglob("*")):
         raise ValueError("Unexpected symbolic link in public bundle")
@@ -349,6 +367,7 @@ try:
             finder_layout(layout_path, volume_name, has_backdrop)
             run(["/bin/sync"])
             shutil.copyfile(Path(layout_path) / ".DS_Store", stage / ".DS_Store")
+            scrub_layout_file(stage / ".DS_Store")
         finally:
             run(["/usr/bin/hdiutil", "detach", layout_path], capture_output=True)
             mounted = None
@@ -370,8 +389,9 @@ try:
             previous = b""
             for chunk in iter(lambda: image.read(1024 * 1024), b""):
                 content = previous + chunk
-                if any(term in content for term in private):
-                    raise ValueError("Local build identity found in mastered disk-image bytes")
+                found = [term for term in private if term in content]
+                if found:
+                    raise ValueError("Local build identity found in mastered disk-image bytes: " + ", ".join(sorted({"home path" if term == private[0] else "repository path" if term == private[1] else "account name" if term == pwd.getpwuid(os.getuid()).pw_name.encode() else "host name" for term in found})))
                 previous = content[-max(map(len, private)):]
         run(["/usr/bin/hdiutil", "convert", writable, "-format", "UDZO", "-imagekey", "zlib-level=9", "-o", partial])
         run(["/usr/bin/xattr", "-c", partial])
