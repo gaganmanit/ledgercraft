@@ -9,7 +9,7 @@
     "check": "for f in public/*.js server.js lib/*.js; do node --check \"$f\" || exit 1; done",
     "demo": "node tools/seed-demo.mjs --home .ledgercraft"
   },
-  "version": "1.7.0",
+  "version": "1.8.0",
   "license": "MIT",
   "engines": {
     "node": ">=24.0.0"

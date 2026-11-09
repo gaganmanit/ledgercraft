@@ -6,7 +6,7 @@ Ledgercraft is a local accounting app for company books, Indian GST billing and 
 
 ## Download for Mac
 
-[Download Ledgercraft 1.7.0 for Apple Silicon](https://github.com/gaganmanit/ledgercraft/releases/download/v1.7.0/Ledgercraft-1.7.0-macOS-arm64.dmg). Open the image and drag Ledgercraft.app into your Applications folder. It runs on macOS 13.5 or later. The app is ad hoc signed and has no Apple notarization.
+[Download Ledgercraft 1.8.0 for Apple Silicon](https://github.com/gaganmanit/ledgercraft/releases/download/v1.8.0/Ledgercraft-1.8.0-macOS-arm64.dmg). Open the image and drag Ledgercraft.app into your Applications folder. It runs on macOS 13.5 or later. The app is ad hoc signed and has no Apple notarization.
 
 ## Get started
 
@@ -17,7 +17,7 @@ npm run setup
 npm start
 ```
 
-The server prints a start link such as `http://127.0.0.1:4173/?token=…`. Open it once; it sets a cookie so that only your browser, and not other programs on the computer, can use the books. Setup downloads and verifies the GSTN reference resources and the public Tally test fixtures. Book entry and reports work without them; HSN search and the GSTR-1 workbook export need them, and the app says so when they are missing.
+The server prints a start link such as `http://127.0.0.1:4173/?token=…`. Open it once; it sets a cookie so that only your browser, and not other programs on the computer, can use the books. The cookie is named after the port, so copies of Ledgercraft running on different ports stay signed in side by side. Setup downloads and verifies the GSTN reference resources and the public Tally test fixtures. Book entry and reports work without them; HSN search and the GSTR-1 workbook export need them, and the app says so when they are missing.
 
 A fresh workspace includes a synthetic specimen company. Use the company chooser to create your own books. Set the books-beginning date before entering opening balances. Each company has its own masters and vouchers, and one reporting period that every statement follows.
 
@@ -63,6 +63,8 @@ Every change to the books is written to an edit log beside the company's files: 
 
 **Settings** under Books holds the numbering series for each voucher type (prefix, suffix with a `{fy}` token that becomes `26-27`, zero padding and whether numbers restart every financial year) and the period locks. A books lock refuses any voucher, opening balance or stock journal dated on or before the lock date; a GST lock refuses GST documents and return decisions dated on or before it. Both need a reason and are written to the edit log. An opening balance on a ledger that vouchers already use can be corrected by giving a reason.
 
+**Users** under Books sets up sign-in for a shared Mac: owners, accountants and viewers with a passphrase each. Until the first user is created the start link opens the books as today; afterwards everyone signs in, sessions last twelve hours from the last request, viewers can read but not change, accountants cannot change locks, numbering or users, and every edit-log entry names the user who made the change.
+
 **Party statements** under Books lists every debtor and creditor with its balance, overdue amount and ageing in current, 1 to 30, 31 to 60, 61 to 90, 91 to 180 and over 180 days, worked out from bill due dates or from the voucher date plus the party's credit days. Open a party for a dated statement with running balance, due dates and open items, printable or downloadable as CSV. Suppliers marked as registered MSMEs show amounts unpaid beyond 45 days of the bill date (Section 43B(h) of the Income-tax Act).
 
 ## GST billing and review
@@ -71,7 +73,7 @@ Start in **GST setup**. Save the business registration, customer or supplier, an
 
 **New invoice** creates itemised sales, purchases and supported linked notes. Registration, place of supply, tax treatment and dated document particulars determine the posting. The invoice register opens the stored document, its print view and associated accounting entry.
 
-**GST returns** provides GSTR-1 and GSTR-3B working figures, HSN summaries, the GSTR-1 Excel workbook and the GSTR-1 JSON file for the GST portal's offline tool or the Returns dashboard upload, with a readiness check that lists warnings before you download. A sales credit note that would reduce tax after the Section 34(2) time limit is refused with the date and a pointer to a financial credit note. Purchases record the supplier's own invoice date, which drives the Section 16(4) deadline and GSTR-2B matching. Import a GSTR-2B file to compare supplier documents with the purchase register. Saved statement originals and reviewed matches stay linked to their source.
+**GST returns** provides the GSTR-1 worksheets, HSN summaries, the GSTR-1 Excel workbook and the GSTR-1 JSON file for the GST portal's offline tool or the Returns dashboard upload, with a readiness check that lists warnings before you download; the JSON is checked against the published GSTN schema in the test suite. The GSTR-3B working runs from Table 3.1 to the cash to deposit: Table 3.2 by place of supply, Table 4 with the 2022 labels, Table 5, credit set off in the Rule 88A order, interest under Section 50 and the late fee under Section 47, plus the GSTR-3B JSON. Filing frequency and preceding-year turnover are saved per registration, and parties can be marked as composition dealers. A sales credit note that would reduce tax after the Section 34(2) time limit is refused with the date and a pointer to a financial credit note. Purchases record the supplier's own invoice date, which drives the Section 16(4) deadline and GSTR-2B matching. Import a GSTR-2B file to compare supplier documents with the purchase register: small amount and date differences match within a saved tolerance and are shown row by row, every row can carry an IMS action (accept, reject, pending or no action) with its history, rejected and pending documents leave the available credit, and a Rule 37 watch lists supplier invoices unpaid beyond 180 days with the credit to reverse. Saved statement originals and reviewed matches stay linked to their source.
 
 **Purchase ITC review** records dated claims, reversals, reclaims and permanent cost decisions against a purchase and its evidence. **Reverse charge** separates liability, cash discharge and credit decisions. **Return corrections** preserves the posted transaction while recording supported corrections to previously reported particulars, including their original filing reference and evidence.
 
@@ -79,11 +81,11 @@ The document exchange screens prepare supported IRP and e-way bill payloads and 
 
 ## Stock and reconciliation
 
-**Stock summary** opens items, godowns, opening values and stock journals. Record transfers, adjustments or physical counts, and inspect quantities and values by item and location. The stock engine supports perpetual FIFO and moving-average costing.
+**Stock summary** opens items, godowns, opening values and stock journals. Record transfers, adjustments or physical counts, and inspect quantities and values by item and location. The stock engine supports perpetual FIFO and moving-average costing, named batches with manufacturing and expiry dates, and alternate units that convert exactly into the base unit.
 
 To include stock values in the financial statements, reconcile opening item values to the Stock-in-Hand ledger controls, then enable **Integrate accounts with inventory**. Selling prices and outgoing inventory costs remain separate.
 
-**Bank reconciliation** maps a local CSV statement to a bank ledger and reviews proposed matches. **Bill-wise ageing** follows supported opening bills, invoice references and partial settlements. Imported Tally bank and bill details are reviewed according to the [compatibility guide](TALLY-COMPATIBILITY.md).
+**Bank reconciliation** maps a CSV or XLSX statement to a bank ledger and reviews proposed matches. Unmatched rows suggest book entries with the same amount within three days, ranked by a shared UTR or cheque number; a voucher can be created from a row with the other ledger, type, date and narration, matched in the same step; narration rules remember the ledger for the next similar row; one row can settle several book entries and several rows one entry. **Bill-wise ageing** follows supported opening bills, invoice references and partial settlements. Imported Tally bank and bill details are reviewed according to the [compatibility guide](TALLY-COMPATIBILITY.md).
 
 ## Import from Tally
 

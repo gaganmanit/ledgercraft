@@ -2,6 +2,36 @@
 
 All notable changes to Ledgercraft are recorded here. Dates are dd-mm-yyyy.
 
+## 1.8.0 — 09-11-2026
+
+### GST
+- GSTR-3B is a complete working, not a grid of supply buckets. Tables 3.1, 3.2 (by place of supply for unregistered persons, composition dealers and UIN holders), 4 (A1 to D2 with the 2022 labels), 5 and 6.1 are built from the same workbook as GSTR-1. Credit is set off in the Rule 88A order (IGST first, then CGST and SGST in the order that leaves the least cash, never CGST against SGST), reverse charge is payable in cash only, and the screen ends in the cash to deposit per head.
+- Interest under Section 50(1) at 18 percent on the cash part from the day after the due date to the payment date, with the Rule 88B relief for a cash-ledger balance credited before the due date; Section 50(3) at 18 percent on credit wrongly availed and utilised. Late fee under Section 47 as reduced by Notification 19/2021 with the nil, 1.5 crore, 5 crore and above caps. Due dates follow monthly filing or QRMP by state group.
+- Download GSTR-3B JSON in the GSTN format (sup_details, inter_sup, itc_elg, inward_sup, intr_ltfee) beside the GSTR-1 download. Filing frequency and preceding-year turnover are saved per registration.
+- Parties can be marked as composition dealers (Section 10); the flag flows into Tables 3.2 and 5.
+- GSTR-2B matching tolerates small differences: 100 paise per head and on taxable value by default, and a supplier date within 3 days, both adjustable and saved. Such rows are "Matched within tolerance" and show every difference; exact matches stay "Matched".
+- IMS (Invoice Management System) actions can be recorded on every 2B row: accept, reject, pending or no action, with reason and date and a full history. Rejected and pending documents leave the ITC available total, and the ITC desk refuses a claim whose evidence is rejected or pending on IMS.
+- Rule 37 watch: purchase documents with ITC claimed whose supplier is unpaid beyond 180 days, with the proportional credit to reverse, the reversal period and the indicative interest; documents approaching the limit are listed too.
+- The GSTR-1 upload JSON is checked against the published GSTN schema in the test suite. HSN quantities are reported with two decimals and the rounding is disclosed; shipping bill numbers are 3 to 7 digits.
+
+### Bank reconciliation
+- Every unmatched statement row suggests book entries with the same amount within three days, ranked by a shared UTR, cheque or reference number and then by date.
+- Create a voucher from a statement row: choose the other ledger, the type (Receipt or Payment by default), date and narration; the voucher goes through the normal numbering, locks and edit log, and the row is matched in the same step.
+- Rules learned from narrations suggest the ledger for the next similar row; rules can be edited and reordered. Statements can be imported from .xlsx as well as CSV. One statement row can be matched to several book entries and several rows to one entry.
+
+### Stock and Tally
+- Tally items valued at Avg. Cost import as moving average with a disclosed difference against Tally's periodic average, instead of being refused. Named batches import as lots with manufacturing and expiry dates, and a movement naming a batch consumes that batch only. Alternate units (1 Box = 12 Nos) convert exactly. LIFO, standard cost, last purchase cost and zero cost remain review exceptions with their reasons.
+- The item view shows batches with quantity, value and expiry; stock journal lines take a batch, dates and a unit.
+
+### Shared Mac
+- Two Ledgercraft servers on different ports of this Mac no longer sign each other out: the start-link cookie and the user cookie are named after the port (`ledgercraft_session_<port>`, `ledgercraft_user_<port>`), and a browser still holding the old names is accepted once and moved over.
+- Users and roles: owner, accountant and viewer with a passphrase each (scrypt), a 12-hour sliding session, and a Users page for the owner. Until a user is created the start link works exactly as before. Every edit-log entry names the signed-in user.
+- Day book, ledger report and invoice register load 200 rows at a time from the server; totals cover every row. Saves return only the changed record.
+
+### Mac
+- The disk image opens as a drag-to-install window with an Applications shortcut and a backdrop arrow. The packaging tool lays the window out with Finder, carries the layout into the mastered image and verifies it, and strips the per-machine attributes macOS adds so the strict signature check passes.
+- The nine native WebKit harnesses pass against the redesigned interface; the PowerShell bridge tests pass with pwsh installed.
+
 ## 1.7.0 — 09-11-2026
 
 ### Mac
