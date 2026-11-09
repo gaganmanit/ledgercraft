@@ -115,12 +115,13 @@ def background_image(file, width=660, height=420):
 
 def finder_layout(mount, volume_name, background):
     """Arrange the mounted writable image like a drag-to-install window. Finder stores the result in .DS_Store."""
-    if Path(mount).name != volume_name:
-        raise ValueError(f"The writable image mounted as {Path(mount).name!r}; detach other Ledgercraft volumes first")
+    disk = Path(mount).name
+    if disk != volume_name:
+        print(f"The writable image mounted as {disk!r} because another {volume_name!r} volume is attached; laying out {disk!r}", file=sys.stderr)
     bg = 'set background picture of theViewOptions to file ".background:background.png"' if background else ""
     script = f'''
         tell application "Finder"
-            tell disk "{volume_name}"
+            tell disk "{disk}"
                 open
                 set current view of container window to icon view
                 set toolbar visible of container window to false
@@ -256,8 +257,7 @@ try:
         layout_path = next(line.split("\t")[-1].strip() for line in layout_mount.splitlines() if "/Volumes/" in line)
         mounted = layout_path
         try:
-            # Address the disk by its real mount name: a stale mount of an earlier image with the same volume name would otherwise catch the Finder commands.
-            finder_layout(layout_path, Path(layout_path).name, has_backdrop)
+            finder_layout(layout_path, volume_name, has_backdrop)
             if has_backdrop:
                 run(["/usr/bin/SetFile", "-a", "V", Path(layout_path) / ".background"], capture_output=True)
             run(["/bin/sync"])
