@@ -74,3 +74,26 @@ test("read-only book snapshots are shared until either source file changes", asy
     await assert.rejects(store.snapshot("../"), /Unknown company/);
   } finally { await rm(home, { recursive: true, force: true }); }
 });
+
+test("a workstation saved before users existed keeps loading, and users never leave through get()", async () => {
+  const { writeFile } = await import("node:fs/promises");
+  const { openWorkstation } = await import("../lib/workstation.js");
+  const home = await mkdtemp(path.join(os.tmpdir(), "financer-users-compat-"));
+  try {
+    const dataDirectory = path.join(home, "data");
+    await writeFile(path.join(home, "workstation.json"), JSON.stringify({ dataDirectory, defaultCompany: null, lastCompany: "old-co", loadLastCompany: true }));
+    const station = await openWorkstation(home, dataDirectory);
+    assert.equal(station.get().lastCompany, "old-co");
+    assert.deepEqual(station.users(), []);
+    const result = await station.updateUsers((users) => ({ users: [...users, { id: "u-1", name: "Asha", role: "owner", passphraseHash: "scrypt$x" }], result: "saved" }));
+    assert.equal(result, "saved");
+    assert.equal(station.get().users, undefined);
+    assert.equal((await station.update({ lastCompany: "new-co", users: [] })).users, undefined);
+    assert.equal(station.users().length, 1, "update() cannot replace the user list");
+    await assert.rejects(station.updateUsers(() => { throw new Error("refused"); }), /refused/);
+    assert.equal(station.users().length, 1);
+    const reopened = await openWorkstation(home, dataDirectory);
+    assert.deepEqual([reopened.get().lastCompany, reopened.users()[0].name], ["new-co", "Asha"]);
+    assert.equal(JSON.parse(await readFile(path.join(home, "workstation.json"), "utf8")).users[0].passphraseHash, "scrypt$x");
+  } finally { await rm(home, { recursive: true, force: true }); }
+});

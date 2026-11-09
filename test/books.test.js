@@ -189,3 +189,24 @@ test("http books keep a verified edit log, honour a books lock and suggest numbe
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("store.as(actor) names the user in the edit log; plain store calls record user null", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "financer-actor-"));
+  const store = createStore(dir);
+  try {
+    const created = await store.create({ name: "Actor Book", booksFrom: "2026-04-01" });
+    const id = created.company.id;
+    const asha = { id: "u-asha", name: "Asha", role: "accountant" };
+    const withRent = await store.as(asha).addLedger(id, { name: "Rent", groupId: "g-indirect-exp", openingPaise: 0, openingDc: "Dr" });
+    assert.equal(withRent.ledger.name, "Rent");
+    assert.equal(withRent.revision, 2);
+    await store.as(null).addGroup(id, { name: "Branch costs", parentId: "g-indirect-exp" });
+    const { entries } = await store.auditTrail(id, {});
+    assert.deepEqual(entries.map((row) => [row.entity, row.user]), [["group", null], ["ledger", { id: "u-asha", name: "Asha" }], ["company", null]]);
+    const filtered = await store.auditTrail(id, { user: "u-asha" });
+    assert.deepEqual(filtered.entries.map((row) => row.entity), ["ledger"]);
+    assert.equal(filtered.verified, true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { start, workstationToken } from "../server.js";
+import { sessionGate, start, workstationToken } from "../server.js";
 
 // Node's fetch rewrites Host and Sec-Fetch-* headers, so browser-shaped requests go through http.request.
 function rawStatus(port, headers, route = "/api/companies") {
@@ -102,4 +102,28 @@ test("the workstation token is created once and reused", async () => {
     assert.equal(await workstationToken(home), first);
     assert.equal(await workstationToken(home, "given"), "given");
   } finally { await rm(home, { recursive: true, force: true }); }
+});
+
+test("sessionGate passes everything while no users exist and answers 401 or 403 once they do", () => {
+  const sent = [];
+  const res = { headers: {}, setHeader(name, value) { this.headers[name] = value; }, writeHead(status) { sent.push(status); }, end(body) { sent.push(JSON.parse(body)); } };
+  const request = (method, route, cookie) => ({ method, headers: cookie ? { cookie } : {}, route });
+  const parts = (route) => route.split("/").filter(Boolean);
+  const none = { hasUsers: () => false };
+  const noUsers = { parts: parts("/api/companies"), users: none };
+  assert.equal(sessionGate(request("POST", "/api/companies"), res, noUsers), false);
+  assert.equal(noUsers.actor, null);
+  const viewer = { id: "u-v", name: "Vani", role: "viewer" };
+  const users = { hasUsers: () => true, session: (value) => (value === "good" ? { user: viewer, sessionId: "s", expiresAt: "" } : null), renew: () => ({ cookie: "ledgercraft_user=renewed" }) };
+  assert.equal(sessionGate(request("GET", "/api/health"), res, { parts: parts("/api/health"), users }), false);
+  assert.equal(sessionGate(request("POST", "/api/session"), res, { parts: parts("/api/session"), users }), false);
+  assert.equal(sessionGate(request("GET", "/ledgercraft.css"), res, { parts: parts("/ledgercraft.css"), users }), false);
+  assert.equal(sessionGate(request("GET", "/api/companies"), res, { parts: parts("/api/companies"), users }), true);
+  assert.deepEqual(sent.splice(0), [401, { error: "Sign in to use these books", signIn: true }]);
+  assert.equal(sessionGate(request("PUT", "/api/companies/a/locks", "ledgercraft_user=good"), res, { parts: parts("/api/companies/a/locks"), users }), true);
+  assert.deepEqual(sent.splice(0), [403, { error: "Your role can view these books but not change them" }]);
+  const reading = { parts: parts("/api/companies/a/audit"), users };
+  assert.equal(sessionGate(request("GET", "/api/companies/a/audit", "ledgercraft_user=good"), res, reading), false);
+  assert.deepEqual(reading.actor, viewer);
+  assert.equal(res.headers["set-cookie"], "ledgercraft_user=renewed");
 });

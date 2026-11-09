@@ -56,3 +56,13 @@ test("page sets need the same registration and period; missing or repeated pages
   assert.throws(()=>run([page("p1"),page("p1")]),/selected twice/);
   assert.throws(()=>run([page("p1"),{...page("p2"),rtnprd:"052026"}]),/period/);
 });
+
+test("tolerance never hides an amendment: a revised number stays a mismatch while its nearby date is only noted", () => {
+  const [row] = run([book("one", "OLD/1", "2026-03-29")], "b2ba", [document]);
+  assert.equal(row.status, "Mismatch");
+  assert.equal(row.matchCode, "mismatch");
+  assert.deepEqual(row.differences, ["number", "date"]);
+  assert.deepEqual(row.tolerated, ["date"]);
+  assert.equal(row.dateDifferenceDays, 3);
+  assert.deepEqual(row.ims, { action: null, at: null, reason: "", source: "none" });
+});

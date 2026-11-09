@@ -1,6 +1,7 @@
 import { originalFiledSource } from "./lib/gst-statement-library.js";
 import { handleAmendmentRoute } from "./lib/gst-amendment-routes.js";
 import { handleItcRoute } from "./lib/gst-itc-routes.js";
+import { handleImsRoute } from "./lib/gst-ims-routes.js";
 import { signedQrSvg } from "./lib/signed-qr.js";
 import { createReadStream } from "node:fs";
 import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -22,6 +23,9 @@ import { searchHSN } from "./lib/hsn-directory.js";
 import { handleBookRoute } from "./lib/book-routes.js";
 import { handleStatementRoute } from "./lib/statement-routes.js";
 import { createStore } from "./lib/store.js";
+import { auditScope } from "./lib/audit-log.js";
+import { createUserDirectory, roleRefusal, USER_COOKIE, USER_MESSAGES } from "./lib/users.js";
+import { handleSessionRoute } from "./lib/session-routes.js";
 import { balanceSheet, dayBook, ledgerReport, profitAndLoss, trialBalance } from "./lib/engine.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -147,6 +151,31 @@ export async function workstationToken(home, provided) {
   return token;
 }
 
+/**
+ * Second gate for a Mac shared by several people, run right after the start-link token
+ * check. While no users are set up it lets everything through (the token holder is the
+ * owner). Once users exist, /api/ requests other than /api/health and /api/session need
+ * the signed-in user cookie (ledgercraft_user), and the user's role must allow the
+ * request (lib/users.js roleRefusal). A live session is renewed for another 12 hours and
+ * becomes the actor of the request: context.actor, and the edit-log scope, so every entry
+ * written while answering it names the user. Returns true when it has answered.
+ */
+export function sessionGate(req, res, context) {
+  const { parts, users } = context;
+  context.actor = null;
+  if (!users?.hasUsers() || parts[0] !== "api") return false;
+  if (parts.length === 2 && (parts[1] === "health" || parts[1] === "session")) return false;
+  const current = users.session(cookieValue(req, USER_COOKIE));
+  if (!current) { send(res, 401, { error: USER_MESSAGES.signIn, signIn: true }); return true; }
+  const refusal = roleRefusal(current.user.role, req.method, parts);
+  if (refusal) { send(res, 403, { error: refusal }); return true; }
+  res.setHeader("set-cookie", users.renew(current).cookie);
+  context.actor = current.user;
+  const scope = auditScope.getStore();
+  if (scope) scope.actor = current.user;
+  return false;
+}
+
 function lockedPage(port) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ledgercraft</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#e6e8e6;color:#1c1f22;font:15px/1.5 system-ui,sans-serif}main{max-width:34rem;background:#fcfcfa;border:1px solid #d5dee9;border-left:3px solid #a51d2d;padding:28px 32px;border-radius:2px}h1{font-size:22px;margin:0 0 8px}p{margin:8px 0}code{font-family:ui-monospace,Menlo,monospace;font-size:13px;background:#f4f5f2;padding:2px 6px;border-radius:3px}</style></head>
@@ -202,8 +231,10 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
   const station = await openWorkstation(home || defaultDir, defaultDir, seedFolder);
   dataDir = station.get().dataDirectory;
   const store = createStore(dataDir);
+  const users = createUserDirectory(station, { key: token });
 
-  const server = http.createServer(async (req, res) => {
+  // Every request runs in its own edit-log scope; sessionGate names the signed-in user.
+  const handle = async (req, res) => {
     try {
       const port = req.socket.localPort;
       const allowedHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
@@ -251,6 +282,8 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
           }
         }
       }
+      const gate = { parts, users };
+      if (sessionGate(req, res, gate)) return;
       if ((req.method === "GET" || req.method === "HEAD") && await serveStatic(req, res, url.pathname)) return;
 
       if (req.method === "GET" && url.pathname === "/api/health") {
@@ -295,8 +328,9 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
         res.end(raw);
         return;
       }
-      const context = { req, res, url, parts, store, dataDir, readBody, send };
-      if (await handleAmendmentRoute(context) || await handleReconciliationRoute(context) || await handleGstExchangeRoute(context) || await handleStockRoute(context) || await handleRcmRoute(context) || await handleItcRoute(context) || await handleGstRoute(context) || await handleTallyRoute(context) || await handleReturnRoute(context) || await handleStatementRoute(context)) return;
+      const context = { req, res, url, parts, store, dataDir, readBody, send, users, actor: gate.actor };
+      if (await handleImsRoute(context)) return;
+      if (await handleSessionRoute(context) || await handleAmendmentRoute(context) || await handleReconciliationRoute(context) || await handleGstExchangeRoute(context) || await handleStockRoute(context) || await handleRcmRoute(context) || await handleItcRoute(context) || await handleGstRoute(context) || await handleTallyRoute(context) || await handleReturnRoute(context) || await handleStatementRoute(context)) return;
       if (await handleBookRoute(context)) return;
       if (req.method === "GET" && url.pathname === "/api/companies") {
         send(res, 200, { companies: await store.list() });
@@ -404,7 +438,8 @@ export async function start({ port = 0, dataDir, home, seedFolder, fallbackPorts
     } catch (error) {
       fail(req, res, error);
     }
-  });
+  };
+  const server = http.createServer((req, res) => auditScope.run({ actor: null }, () => handle(req, res)));
 
   const listen = (candidate) => new Promise((resolve, reject) => {
     const onError = (error) => { server.removeListener("listening", onListening); reject(error); };

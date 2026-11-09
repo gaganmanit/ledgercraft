@@ -81,8 +81,8 @@ test("unsupported units, valuation, named batches, unknown godowns and mismatche
   const source = await files();
   const cases = [
     edit(source, "StockMasters.xml", xml => xml.replace("<ISSIMPLEUNIT>Yes", "<ISSIMPLEUNIT>No")),
-    edit(source, "StockMasters.xml", xml => xml.replace("FIFO Perpetual", "Average Cost")),
-    edit(source, "StockMasters.xml", xml => xml.replace("Primary Batch", "Private lot")),
+    edit(source, "StockMasters.xml", xml => xml.replace("FIFO Perpetual", "LIFO Perpetual")),
+    edit(source, "StockMasters.xml", xml => xml.replace("<BATCHNAME>Primary Batch</BATCHNAME>", "<BATCHNAME>Private lot</BATCHNAME><EXPIRYPERIOD>1 Year</EXPIRYPERIOD>")),
     edit(source, "StockMasters.xml", xml => xml.replace("<GODOWNNAME>Workshop", "<GODOWNNAME>Missing")),
     edit(source, "StockMasters.xml", xml => xml.replace("<OPENINGBALANCE>4 nos", "<OPENINGBALANCE>5 nos")),
     edit(source, "StockVouchers.xml", xml => xml.replace("<ACTUALQTY>4 nos", "<ACTUALQTY>5 nos")),
@@ -100,6 +100,15 @@ test("unsupported units, valuation, named batches, unknown godowns and mismatche
     assert.equal(reportOf(preview).totals.valuePaise, null);
     assert.deepEqual(restoreTallyArchive(archiveOf(preview)).company.stock, preview.company.stock);
   }
+  // Tally Average Cost and a named batch were exceptions before; they now import (with a disclosure for the average).
+  const average = previewTally(edit(source, "StockMasters.xml", xml => xml.replace("FIFO Perpetual", "Average Cost")), options);
+  assert.equal(average.summary.stockProjection.exceptions, 0);
+  assert.ok(average.issues.some(issue => issue.code === "tally-costing-mapped" && issue.severity === "info"));
+  assert.equal(reportOf(average).totals.complete, true);
+  const named = previewTally(edit(source, "StockMasters.xml", xml => xml.replace("Primary Batch", "Private lot")), options);
+  assert.equal(named.summary.stockProjection.exceptions, 0, JSON.stringify(named.issues));
+  assert.deepEqual(reportOf(named).items[0].batches.map(row => row.name), ["Private lot"]);
+  assert.equal(reportOf(named).items[0].quantity, "11");
 });
 
 test("copied originals do not duplicate inventory and missing opening costs remain incomplete", async () => {
@@ -252,7 +261,8 @@ test("empty stock source reviews require archived-source reparse and survive nor
 test("Ledgercraft restores historical Financer stock evidence and rejects altered costing text", async () => {
   for (const method of ["", "Average Cost"]) {
     const changed = edit(await files(), "StockMasters.xml", xml => xml.replace("FIFO Perpetual</COSTINGMETHOD>", method + "</COSTINGMETHOD>"));
-    const archive = archiveOf(previewTally(changed, options));
+    // Earlier versions rejected Average Cost; build that archive with the reading it was saved under.
+    const archive = archiveOf(previewTally(changed, method ? { ...options, legacyStockAverageCost: true } : options));
     const gap = archive.company.stock.tally.sourceGaps.find(row => row.message.includes("Ledgercraft"));
     assert.ok(gap);
     gap.message = gap.message.replace("Ledgercraft", "Financer");
