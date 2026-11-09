@@ -444,7 +444,7 @@ async function composeInvoice(context) {
       <label data-export-field hidden>Export or SEZ tax treatment<select name="exportMode"><option value="lut">Under LUT or bond without payment of tax</option><option value="with-payment">With payment of integrated tax</option></select></label>
       <label data-customs-field hidden>Destination country code<input name="destinationCountry" maxlength="2" placeholder="US" value="${esc(fields.destinationCountry || "")}" class="code"></label>
       <label data-customs-field hidden>Customs port code<input name="portCode" maxlength="6" value="${esc(fields.portCode || "")}" class="code"></label>
-      <label data-customs-field hidden>Shipping bill number<input name="shippingBillNumber" maxlength="20" value="${esc(fields.shippingBillNumber || "")}" class="code"></label>
+      <label data-customs-field hidden>Shipping bill number<input name="shippingBillNumber" inputmode="numeric" pattern="[0-9]{3,7}" maxlength="7" title="3 to 7 digits, as printed on the shipping bill" value="${esc(fields.shippingBillNumber || "")}" class="code"></label>
       <label data-customs-field hidden>Shipping bill date<input type="date" name="shippingBillDate" value="${esc(fields.shippingBillDate || "")}"></label>
       ${addressField("shippingAddress", "Delivery address, if different", fields.shippingAddress)}
       ${addressField("narration", "Narration or terms", fields.narration)}

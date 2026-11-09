@@ -194,13 +194,13 @@ test('EXPA can add explicitly evidenced shipping details with zero liability cha
   e.invoice.items[0] = { ...e.invoice.items[0], supplyStatus: 'zero-rated', ...zero(), igstPaise: 180, taxPaise: 180 };
   e.invoice.totals = { ...e.invoice.items[0] };
   const input = inputFor(e); input.originalReported = outwardDocumentSnapshot(e.invoice, e.vouchers); delete input.originalReported.hsnRows;
-  input.shippingUpdate = { portCode: 'inbom1', shippingBillNumber: 'PUBLIC-SB-123', shippingBillDate: '2026-05-20', documentReference: 'PUBLIC-CUSTOMS-EVIDENCE' };
+  input.shippingUpdate = { portCode: 'inbom1', shippingBillNumber: '1234567', shippingBillDate: '2026-05-20', documentReference: 'PUBLIC-CUSTOMS-EVIDENCE' };
   const before = JSON.stringify(e.vouchers);
   const result = save(e, prepare(e, input));
   assert.equal(result.record.delta.taxPaise, 0);
   assert.equal(result.record.section, 'expa');
   assert.equal(result.record.revised.portCode, 'INBOM1');
-  assert.equal(result.record.revised.shippingBillNumber, 'PUBLIC-SB-123');
+  assert.equal(result.record.revised.shippingBillNumber, '1234567');
   assert.equal(result.record.shippingUpdate.documentReference, 'PUBLIC-CUSTOMS-EVIDENCE');
   assert.equal(JSON.stringify(e.vouchers), before);
   assert.equal(assertOutwardAmendments(JSON.parse(JSON.stringify(e.company)), JSON.parse(before)), true);
@@ -213,7 +213,7 @@ test('shipping-only updates need customs evidence, complete particulars and a da
   e.invoice.items[0] = { ...e.invoice.items[0], supplyStatus: 'zero-rated', ...zero(), taxPaise: 0, totalPaise: 1000 };
   e.invoice.totals = { ...e.invoice.items[0] };
   const input = inputFor(e);
-  input.shippingUpdate = { portCode: 'INBOM1', shippingBillNumber: 'PUBLIC-SB', shippingBillDate: '2026-06-12', documentReference: 'PUBLIC-CUSTOMS' };
+  input.shippingUpdate = { portCode: 'INBOM1', shippingBillNumber: '7654321', shippingBillDate: '2026-06-12', documentReference: 'PUBLIC-CUSTOMS' };
   assert.throws(() => prepare(e, input), /after the intended/);
   input.shippingUpdate.shippingBillDate = '2026-05-20'; delete input.shippingUpdate.documentReference;
   assert.throws(() => prepare(e, input), /customs evidence/);
