@@ -380,9 +380,25 @@ try:
         if has_backdrop:
             run(["/usr/bin/SetFile", "-a", "V", backdrop_dir], capture_output=True)
         normalize_dates(stage)
-        # HFS+ keeps the Applications symbolic link and executable modes; makehybrid synthesises only the
-        # fixed, empty Finder location marker on each file (privacy_check accepts exactly that).
-        run(["/usr/bin/hdiutil", "makehybrid", "-hfs", "-hfs-volume-name", volume_name, "-hfs-openfolder", stage, "-o", writable, stage])
+        # HFS+ keeps the Applications symbolic link, .DS_Store and executable modes, and makehybrid writes the
+        # filesystem itself, so none of the kernel's per-machine provenance attributes reach the image. It does
+        # stamp every file with a Finder location marker, which codesign --strict refuses, so the mastered image is
+        # reopened writable once to drop those markers (deleting attributes adds no provenance).
+        mastered = work / "mastered.dmg"
+        run(["/usr/bin/hdiutil", "makehybrid", "-hfs", "-hfs-volume-name", volume_name, "-hfs-openfolder", stage, "-o", mastered, stage])
+        run(["/usr/bin/hdiutil", "convert", mastered, "-format", "UDRW", "-o", writable], capture_output=True)
+        mastered.unlink()
+        strip_mount = work / "strip-mount"
+        strip_mount.mkdir()
+        run(["/usr/bin/hdiutil", "attach", "-readwrite", "-noverify", "-nobrowse", "-noautoopen", "-mountpoint", strip_mount, writable], capture_output=True)
+        mounted = strip_mount
+        try:
+            run(["/usr/bin/xattr", "-rd", "com.apple.FinderInfo", strip_mount / "Ledgercraft.app"], capture_output=True)
+            privacy_check(strip_mount / "Ledgercraft.app")
+            run(["/bin/sync"])
+        finally:
+            run(["/usr/bin/hdiutil", "detach", strip_mount], capture_output=True)
+            mounted = None
         mount = work / "image-mount"
         mount.mkdir()
         with writable.open("rb") as image:
