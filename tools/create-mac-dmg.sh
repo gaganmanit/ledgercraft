@@ -260,6 +260,9 @@ try:
             finder_layout(layout_path, volume_name, has_backdrop)
             if has_backdrop:
                 run(["/usr/bin/SetFile", "-a", "V", Path(layout_path) / ".background"], capture_output=True)
+            # Finder's look at the volume tags the bundle with provenance and quarantine attributes; strip them again and re-check before mastering.
+            run(["/usr/bin/xattr", "-cr", Path(layout_path) / "Ledgercraft.app"])
+            privacy_check(Path(layout_path) / "Ledgercraft.app")
             run(["/bin/sync"])
         finally:
             run(["/usr/bin/hdiutil", "detach", layout_path], capture_output=True)
